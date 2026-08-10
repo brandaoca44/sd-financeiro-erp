@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:18.4-alpine
+    container_name: sd-financeiro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - sd_financeiro_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sd_financeiro_network
+
+  redis:
+    image: redis:8-alpine
+    container_name: sd-financeiro-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - sd_financeiro_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sd_financeiro_network
+
+volumes:
+  sd_financeiro_postgres_data:
+    name: sd-financeiro-postgres-data
+  sd_financeiro_redis_data:
+    name: sd-financeiro-redis-data
+
+networks:
+  sd_financeiro_network:
+    name: sd-financeiro-network
+    driver: bridge
