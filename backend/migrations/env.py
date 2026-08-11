@@ -3,6 +3,7 @@ import selectors
 
 from logging.config import fileConfig
 
+from app.modules.organizations import models as organization_models
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
