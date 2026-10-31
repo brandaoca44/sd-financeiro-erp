@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
+import asyncio
 import secrets
 
 from fastapi import FastAPI, Request
@@ -13,6 +14,10 @@ from starlette.responses import JSONResponse
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.health import router as health_router
+from app.api.v1.ownership import router as ownership_router
+from app.api.v1.invitations import router as invitations_router
+from app.api.v1.roles import router as roles_router
+from app.api.v1.memberships import router as memberships_router
 from app.core.config import Settings, get_settings
 from app.core.http_security import ProtectedApiBoundary
 from app.database.session import async_session_factory, close_database_engine
@@ -53,14 +58,32 @@ def create_app(
                     ),
                 )
                 dummy_hash = await hash_password(SecretStr(secrets.token_urlsafe(32)))
+                application.state.auth_hash_slots = asyncio.Semaphore(config.auth_hash_concurrency)
+                application.state.ownership_limiter = LoginRateLimiter(
+                    client, key_secret=config.auth_rate_limit_key,
+                    namespace=rate_limit_namespace or f"sd-financeiro:{config.app_environment}",
+                    operation="ownership",
+                )
+                for operation in ("invitation_manage", "invitation_accept", "access_manage"):
+                    setattr(application.state, operation + "_limiter", LoginRateLimiter(
+                        client, key_secret=config.auth_rate_limit_key,
+                        namespace=rate_limit_namespace or f"sd-financeiro:{config.app_environment}",
+                        operation=operation,
+                    ))
                 application.state.authentication = AuthenticationService(
                     factory, limiter, dummy_hash=dummy_hash,
                     idle_timeout=timedelta(seconds=config.auth_idle_timeout_seconds),
                     hash_concurrency=config.auth_hash_concurrency,
+                    hash_slots=application.state.auth_hash_slots,
                 )
             yield
         finally:
             application.state.authentication = None
+            application.state.ownership_limiter = None
+            application.state.auth_hash_slots = None
+            application.state.invitation_manage_limiter = None
+            application.state.invitation_accept_limiter = None
+            application.state.access_manage_limiter = None
             if client is not None and redis_client is None:
                 await client.aclose()
             if session_factory is None:
@@ -74,6 +97,11 @@ def create_app(
         openapi_url="/openapi.json" if config.app_environment in ("development", "test") else None,
     )
     application.state.authentication = None
+    application.state.ownership_limiter = None
+    application.state.auth_hash_slots = None
+    application.state.invitation_manage_limiter = None
+    application.state.invitation_accept_limiter = None
+    application.state.access_manage_limiter = None
     application.state.settings = config
     application.state.session_factory = factory
     application.add_middleware(ProtectedApiBoundary, api_prefix=config.api_v1_prefix)
@@ -86,6 +114,10 @@ def create_app(
     application.include_router(health_router, prefix=config.api_v1_prefix)
     application.include_router(auth_router, prefix=config.api_v1_prefix)
     application.include_router(organization_router, prefix=config.api_v1_prefix)
+    application.include_router(ownership_router, prefix=config.api_v1_prefix)
+    application.include_router(invitations_router, prefix=config.api_v1_prefix)
+    application.include_router(roles_router, prefix=config.api_v1_prefix)
+    application.include_router(memberships_router, prefix=config.api_v1_prefix)
     return application
 
 

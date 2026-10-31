@@ -56,6 +56,11 @@ deverá manter o token protegido em memória e descartá-lo no logout; não grav
 URLs, logs ou armazenamento persistente do navegador. TLS é obrigatório na implantação.
 O código rejeita HTTP em staging/production. Não há CORS liberado indiscriminadamente.
 
+O [aceite de convite](onboarding-e-convites.md) permite criar conta com nome e senha
+ou confirmar a senha de uma conta existente. Não há cadastro irrestrito, troca de
+senha por convite ou emissão automática de sessão. Tokens de convite são separados
+dos tokens de sessão e não autenticam as rotas de negócio.
+
 ## Rate limit
 
 | Dimensão | Valor inicial |
@@ -85,8 +90,14 @@ As variáveis estão documentadas em [backend/.env.example](../backend/.env.exam
 - `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`: conexão dos contadores. Credenciais opcionais:
   `REDIS_USERNAME` e `REDIS_PASSWORD`; não versionar valores reais.
 - `AUTH_IDLE_TIMEOUT_SECONDS`: inatividade, padrão 1800.
-- `AUTH_HASH_CONCURRENCY`: verificações simultâneas por worker, padrão 2.
-- `AUTH_ACCOUNT_*`, `AUTH_ORIGIN_*`, `AUTH_GLOBAL_*`: limites e janelas em segundos.
+- `AUTH_HASH_CONCURRENCY`: vagas compartilhadas de login, propriedade, convites e perfis por worker, padrão 2.
+- `AUTH_ACCOUNT_*`, `AUTH_ORIGIN_*`, `AUTH_GLOBAL_*`: limites e janelas do login em segundos.
+
+Designação e transferência de proprietário exigem confirmação da senha, com
+contadores separados do login, compartilhados entre as duas operações: 5 por ator
+em 15 minutos, 30 por origem/minuto e 300 gerais/minuto. O ator é identificado pela
+sessão. As operações não revelam dados de usuários e retornam 204 sem corpo quando
+concluídas. Consulte o [contrato de propriedade](hierarquia-e-permissoes.md#contrato-http).
 
 Antes de usar uma conta real: revisar/aplicar migrations, configurar os segredos e
 executar, dentro de backend, `uv run python -m app.modules.identity.bootstrap_cli`.
@@ -100,7 +111,9 @@ O bloqueio local de senhas é mínimo; uma lista abrangente de senhas comuns/com
 ainda precisa de política de manutenção antes da produção.
 
 Após a validação em bancos temporários, as migrations foram aplicadas ao banco
-local do ERP: revisão `c418d69a02be (head)`, sem diferenças pendentes de schema.
+local do ERP: autenticação inicialmente em `c418d69a02be`; hierarquia e histórico
+posteriormente em `e7b1c90a42d3`, convites em `f3a82c17d905` e perfis/permissões em
+`a81e73c405bf`, e ciclo de vínculos em `b92f8d06e4a1 (head)`, sem diferenças pendentes de schema.
 O segredo foi gerado diretamente em `backend/.env`, sem exibição ou versionamento.
 O primeiro operador foi criado pelo desenvolvedor no comando interativo, sem
 compartilhar senha ou token no chat.
@@ -110,6 +123,11 @@ sem sessão e 401 para credenciais inexistentes. Login autorizado e logout com s
 conta foram confirmados pelo desenvolvedor em 31/10/2026: login 200, logout 204 e
 acesso protegido com token revogado 401. Essa confirmação foi manual via Swagger;
 os testes automatizados também cobrem o fluxo em infraestrutura isolada.
+
+O [catálogo e a gestão de perfis](perfis-e-permissoes.md) acrescentam concessões por
+perfil sem remover as flags anteriores. Escritas administrativas confirmam senha,
+usam rate limit próprio e registram auditoria; não emitem nova sessão nem incorporam
+permissões ao token. Revisões e origem da autoridade são conferidas no servidor.
 
 ## Rotas públicas e pendências
 

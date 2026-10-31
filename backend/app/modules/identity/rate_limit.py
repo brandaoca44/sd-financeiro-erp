@@ -77,12 +77,13 @@ class LoginRateLimiter:
 
     Recebe cliente Redis gerenciado pelo chamador, com timeouts finitos. A origem
     deve vir da conexão validada pelo servidor; não recebe ou interpreta headers.
-    Aplique somente no login, nunca reutilize esse consumo para impedir logout.
+    Login, propriedade, convites e gestão de perfis usam contadores separados. Nunca limitar logout.
     """
 
     def __init__(
         self, client: Redis, *, key_secret: SecretStr, namespace: str,
         policy: LoginRateLimitPolicy | None = None,
+        operation: str = "login",
     ) -> None:
         if not isinstance(key_secret, SecretStr) or len(key_secret.get_secret_value().encode("utf-8")) < 32:
             raise ValueError("O segredo do limitador deve ter pelo menos 32 bytes.")
@@ -92,9 +93,11 @@ class LoginRateLimiter:
             raise ValueError("Namespace de rate limit inválido.")
         if policy is not None and not isinstance(policy, LoginRateLimitPolicy):
             raise ValueError("Política de rate limit inválida.")
+        if operation not in ("login", "ownership", "invitation_manage", "invitation_accept", "access_manage"):
+            raise ValueError("Operação de rate limit inválida.")
         self._client = client
         self._key_secret = key_secret
-        self._prefix = "{" + namespace + ":login:v1}"
+        self._prefix = "{" + namespace + ":" + operation + ":v1}"
         self._policy = policy if policy is not None else LoginRateLimitPolicy()
 
     def _digest(self, purpose: str, value: str) -> str:

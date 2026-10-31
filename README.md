@@ -34,8 +34,11 @@ Ainda não está pronto para produção ou uso multi-tenant com dados reais.
 | Autenticação HTTP | Login e logout com token opaco, inatividade e revogação |
 | Rate limit | Limites por conta, origem e geral no login, com Redis e contagem atômica |
 | Bootstrap administrativo | Comando interativo para inicialização única do primeiro operador, sem cadastro público |
-| Hierarquia organizacional | Persistência de proprietário, perfis e atribuições por tenant, sem novos privilégios automáticos; migration em revisão |
-| Testes | 142 testes validados com `unittest`, incluindo integração HTTP, PostgreSQL e Redis |
+| Hierarquia organizacional | Proprietário, perfis e atribuições por tenant; rotas de designação/transferência com reautenticação limitada e histórico atômico |
+| Onboarding e convites | Provisionamento com convite ao primeiro Master; aceite de conta nova ou existente, convites mínimos a colaboradores e revogação |
+| Perfis e permissões | Catálogo fechado, gestão de perfis, atribuições por tenant e delegação com teto e origem auditados |
+| Ciclo dos vínculos | Ativação/desativação pelo Master, com limpeza de concessões e proteção do proprietário atual |
+| Testes | 274 testes validados com `unittest`, incluindo integração HTTP, PostgreSQL e Redis |
 
 Organization possui criação e consulta autenticadas com isolamento de acesso testado
 nessas rotas. Módulos empresariais, permissões por empresa e painel executivo ainda
@@ -244,16 +247,21 @@ continua pendente; o bootstrap não cria operadores adicionais nem recupera cont
 
 O projeto evolui em pequenos ciclos de implementação, validação, revisão e aprovação.
 A interface HTTP de Organization está implementada com autenticação e autorização.
-As migrations foram aplicadas ao banco local em `c418d69a02be (head)` e o segredo
+As migrations foram aplicadas ao banco local em `b92f8d06e4a1 (head)` e o segredo
 de autenticação foi configurado sem exibição. A API local teve health e recusas
 de acesso validados. O primeiro operador foi criado e o desenvolvedor confirmou
 login, logout e recusa de sessão revogada via Swagger em 31/10/2026.
-Auditoria e outros controles de produção seguem pendentes.
+As rotas de propriedade estão disponíveis, sem atribuição automática de Master.
+O histórico de propriedade é transacional; auditoria das demais operações e outros
+controles de produção seguem pendentes.
 
 - [Documentação do backend](backend/README.md)
 - [Planejamento do produto e evolução funcional](docs/planejamento.md)
 - [Contrato HTTP e política de acesso de Organization](docs/api-organizations.md)
 - [Autenticação e segurança](docs/autenticacao.md)
+- [Onboarding e convites](docs/onboarding-e-convites.md)
+- [Catálogo de permissões e gestão de perfis](docs/perfis-e-permissoes.md)
+- [Ativação e desativação de vínculos](docs/ciclo-de-vida-de-vinculos.md)
 - [Hierarquia, perfis e permissões por área e segmento](docs/hierarquia-e-permissoes.md)
 
 ## Licenciamento

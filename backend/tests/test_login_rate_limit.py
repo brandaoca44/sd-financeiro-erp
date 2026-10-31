@@ -33,6 +33,17 @@ class LoginRateLimiterTests(unittest.IsolatedAsyncioTestCase):
     async def test_allowed_request_returns_without_error(self):
         self.assertIsNone(await self.limiter.check(account_identifier="pessoa@example.invalid", origin_ip="127.0.0.1"))
 
+    def test_operation_names_are_allowlisted_and_counters_are_separate(self):
+        ownership = LoginRateLimiter(self.client, key_secret=self.secret, namespace="sd-financeiro:test:unit",
+                                     operation="ownership")
+        first = self.limiter._keys("ator", "127.0.0.1")
+        second = ownership._keys("ator", "127.0.0.1")
+        self.assertTrue(all(a != b for a, b in zip(first, second)))
+        for operation in ("", "logout", "ownership}:injetado"):
+            with self.assertRaises(ValueError):
+                LoginRateLimiter(self.client, key_secret=self.secret, namespace="sd-financeiro:test:unit",
+                                 operation=operation)
+
     async def test_denial_provides_generic_message_and_retry_after(self):
         self.client.eval.return_value = [0, 12]
         with self.assertRaises(LoginRateLimitExceededError) as caught:

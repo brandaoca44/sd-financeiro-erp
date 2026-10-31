@@ -38,6 +38,17 @@ pelo Compose ficam restritas ao computador local. O backend lê especificamente
 | `organizations/router.py` | Rotas protegidas por sessão e permissões |
 | `identity/authorization.py` | Usuário ativo e concessões por tenant |
 | `identity/access_models.py` | Proprietário, perfis e atribuições com FKs entre registros do mesmo tenant |
+| `identity/ownership.py` | Designação e transferência com senha, sessão, locks e histórico atômico |
+| `api/v1/ownership.py` | Rotas de propriedade com rate limit e concorrência compartilhada com login |
+| `identity/invitation_models.py` | Convites de uso único, concessão e trilha de aceite/revogação |
+| `identity/invitations.py` | Onboarding, confirmação de conta e vínculo transacional |
+| `api/v1/invitations.py` | Emissão, aceite e revogação com limites próprios |
+| `identity/permissions.py` | Catálogo fechado das ações existentes e fontes de concessão |
+| `identity/permission_models.py` | Concessões por perfil, delegação com teto e snapshots de auditoria |
+| `identity/roles.py` | Gestão transacional de perfis, atribuições e delegações |
+| `api/v1/roles.py` | Rotas administrativas com senha, rate limit e revisões |
+| `identity/memberships.py` | Ciclo do vínculo, limpeza de concessões e proteção do Master |
+| `api/v1/memberships.py` | Consulta e alteração mínima do status do vínculo |
 | `identity/passwords.py` | Argon2id e atualização dos parâmetros do hash |
 | `identity/sessions.py` | Tokens opacos, inatividade e revogação |
 | `identity/rate_limit.py` | Limites compartilhados no Redis |
@@ -66,19 +77,41 @@ Ele confirma o destino e solicita nome, e-mail e senha oculta. Cria usuário ati
 hash e marcador único na mesma transação, sem acesso automático a tenants.
 Não cria conta padrão, não promove contas existentes e não emite sessão.
 
-As migrations já foram aplicadas ao banco local, na revisão `c418d69a02be (head)`.
+As migrations foram aplicadas ao banco local, na revisão `b92f8d06e4a1 (head)`.
 O segredo do rate limit foi gerado no `.env`, sem exibição. A API local foi validada
 com health 200 e recusa de acessos sem sessão. O operador foi criado e o desenvolvedor
 confirmou login 200, logout 204 e recusa do token revogado 401 via Swagger em
 31/10/2026. A base ainda não está pronta para produção.
 
-A nova persistência de hierarquia está na migration `d2a6f09b84c1`, validada apenas
-em banco temporário nesta etapa. Perfis e atribuições começam inativos. Não há
-proprietário automático, integração das categorias às permissões, nem novas rotas
-de administração. O próximo incremento é a designação e transferência segura do
-proprietário, conforme o [desenho de acessos](../docs/hierarquia-e-permissoes.md).
+As migrations `d2a6f09b84c1` (hierarquia) e `e7b1c90a42d3` (histórico de propriedade)
+foram validadas em bancos temporários e depois aplicadas ao PostgreSQL local na porta
+5433. O schema está alinhado aos models e as contagens das tabelas anteriores foram
+preservadas. Nenhum proprietário foi atribuído. Perfis e atribuições começam inativos.
+As rotas já permitem designação explícita e transferência com confirmação da senha,
+sessão válida, limites de reautenticação e histórico atômico. Não há privilégios
+automáticos. Onboarding e convites/vínculos mínimos já estão implementados, conforme o
+[desenho de acessos e contrato HTTP](../docs/hierarquia-e-permissoes.md).
+
+O [fluxo de onboarding e convites](../docs/onboarding-e-convites.md) cobre conta nova
+ou existente, primeiro Master, colaboradores e revogação. Não envia e-mail: o token
+é entregue uma única vez ao emissor para entrega privada. Aceite não emite sessão
+nem concede perfis automaticamente. O [catálogo e a gestão de perfis](../docs/perfis-e-permissoes.md)
+já permitem concessões explícitas e delegação limitada de atribuições. O [ciclo
+dos vínculos](../docs/ciclo-de-vida-de-vinculos.md) permite ativação/desativação pelo
+Master sem remover o proprietário atual. Conversão das flags antigas segue pendente;
+desativação explícita remove a leitura antiga daquele vínculo como parte da revogação.
+A migration de convites foi aplicada à porta 5433 após os testes, preservando as
+contagens das tabelas anteriores. Alembic check confirmou alinhamento; não foram
+criadas contas, organizações ou convites reais nesta validação.
 
 ## Testes
+
+Última validação completa: 274 testes aprovados. A etapa de vínculos adicionou 26
+testes, cobrindo proteção do Master, isolamento, revogação, reativação mínima,
+concorrência e auditoria. Migration aplicada à porta 5433, com flags/status e contagens
+anteriores preservados, schema alinhado e nenhuma alteração real de vínculo criada.
+A API local foi reiniciada e validada com health 200, GET/PUT de status no OpenAPI e
+recusa 401 sem sessão. O sucesso foi validado em infraestrutura isolada.
 
 Testes sem infraestrutura externa:
 

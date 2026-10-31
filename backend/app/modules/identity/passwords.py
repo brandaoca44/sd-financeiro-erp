@@ -10,6 +10,31 @@ from pwdlib.exceptions import UnknownHashError
 _password_hash = PasswordHash.recommended()
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
+_COMMON_PASSWORDS = frozenset({
+    "12345678", "password", "senha123", "qwertyui", "123456789012345",
+    "12345678901234567890", "password123456789", "senha12345678901",
+    "administrador123", "qwertyuiop123456",
+})
+
+
+async def run_password_work(work):
+    """Mantém a vaga do chamador até a thread terminar, inclusive no cancelamento."""
+    task = asyncio.create_task(work)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        await asyncio.shield(task)
+        raise
+
+
+def validate_new_password(password: SecretStr) -> SecretStr:
+    """Bloqueio local mínimo compartilhado pelo bootstrap e aceite de novos usuários."""
+    plain = password.get_secret_value()
+    if not MIN_PASSWORD_LENGTH <= len(plain) <= MAX_PASSWORD_LENGTH:
+        raise ValueError("A senha deve conter entre 8 e 128 caracteres.")
+    if plain.lower() in _COMMON_PASSWORDS or len(set(plain)) == 1:
+        raise ValueError("Escolha uma senha menos previsível.")
+    return password
 
 
 async def hash_password(password: SecretStr) -> SecretStr:

@@ -38,12 +38,13 @@ class AuthenticationService:
     def __init__(
         self, session_factory: async_sessionmaker, limiter: LoginRateLimiter,
         *, dummy_hash: SecretStr, idle_timeout: timedelta, hash_concurrency: int = 2,
+        hash_slots: asyncio.Semaphore | None = None,
     ) -> None:
         self._factory = session_factory
         self._limiter = limiter
         self._dummy_hash = dummy_hash
         self._idle_timeout = idle_timeout
-        self._hash_slots = asyncio.Semaphore(hash_concurrency)
+        self._hash_slots = hash_slots if hash_slots is not None else asyncio.Semaphore(hash_concurrency)
 
     async def login(self, data: LoginRequest, *, origin_ip: str) -> IssuedSession:
         await self._limiter.check(account_identifier=str(data.email), origin_ip=origin_ip)

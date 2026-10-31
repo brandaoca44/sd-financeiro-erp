@@ -8,15 +8,11 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.identity.models import PlatformBootstrap, User, UserPasswordCredential, UserStatus
-from app.modules.identity.passwords import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, hash_password
+from app.modules.identity.passwords import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, hash_password, validate_new_password
 
 
 # Identificador estável compartilhado por todas as execuções deste bootstrap.
 _BOOTSTRAP_LOCK_ID = 734_905_318_612
-_COMMON_BOOTSTRAP_PASSWORDS = frozenset({
-    "123456789012345", "12345678901234567890", "password123456789",
-    "senha12345678901", "administrador123", "qwertyuiop123456",
-})
 
 
 class BootstrapOperatorInput(BaseModel):
@@ -40,10 +36,7 @@ class BootstrapOperatorInput(BaseModel):
     def reject_obvious_weak_passwords(cls, value: SecretStr) -> SecretStr:
         """Aplica bloqueio local mínimo; não consulta serviços externos com a senha."""
 
-        plain = value.get_secret_value()
-        if plain.lower() in _COMMON_BOOTSTRAP_PASSWORDS or len(set(plain)) == 1:
-            raise ValueError("Escolha uma senha menos previsível.")
-        return value
+        return validate_new_password(value)
 
 
 class BootstrapAlreadyInitializedError(Exception):

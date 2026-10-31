@@ -19,12 +19,18 @@ empresas do cliente e não duplica seus identificadores jurídicos.
 | Operação | Condições |
 | --- | --- |
 | Criar organização | Sessão válida, usuário ativo e `can_provision_organizations=true` |
-| Consultar organização | Sessão válida, usuário ativo, vínculo ativo e `can_read_organization=true` no tenant solicitado |
+| Consultar organização | Sessão válida, usuário e vínculo ativos; flag `can_read_organization=true` ou perfil com `organizations.read` válido no tenant solicitado |
+| Designar/transferir proprietário | Sessão válida, senha do ator e autoridade específica; [contrato](hierarquia-e-permissoes.md#contrato-http) |
+| Onboarding e convites | Provisionador para primeiro Master; Master para colaboradores; [contrato](onboarding-e-convites.md) |
+| Alterar status de vínculo | Somente Master, com senha, revisão e proprietário atual protegido; [contrato](ciclo-de-vida-de-vinculos.md) |
 
 Provisionamento e leitura são permissões independentes. O primeiro operador pode
 criar tenants, mas não recebe acesso global ou vínculos automáticos com eles.
 As permissões são consultadas no banco a cada operação; não são aceitas em headers,
 corpo da requisição ou claims enviados pelo cliente.
+Concessões por perfil respeitam status e origem da atribuição; a origem delegada
+depende do teto e da revisão atuais. Master/cargo não libera leitura implicitamente.
+Detalhes no [contrato de perfis](perfis-e-permissoes.md).
 
 ## POST /api/v1/organizations
 
@@ -90,4 +96,7 @@ interrompe uma operação que já estava autorizada e em andamento.
 Os testes HTTP usam login real, Argon2id, PostgreSQL temporário e Redis com namespace
 exclusivo. Validam acesso sem token, permissões, troca de tenant, respostas 404
 uniformes, expiração, revogação e ausência de dados internos nos erros.
-Permissões por empresa, auditoria completa e fluxos de convite continuam pendentes.
+Convites e vínculos mínimos estão implementados com aceite e revogação. Permissões
+por empresa e auditoria completa continuam pendentes. Vínculos existentes já podem
+ser ativados/desativados pelo Master, com proteção do proprietário atual e limpeza
+de concessões; administração global de usuários continua separada.

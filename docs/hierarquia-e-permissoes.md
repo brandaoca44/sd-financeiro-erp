@@ -1,9 +1,10 @@
 # Hierarquia, perfis e permissões
 
-Status: primeira etapa de persistência implementada e validada em banco temporário.
-A migration ainda não foi aplicada ao banco local. Não há proprietários ou perfis
-atribuídos automaticamente, novas rotas ou alteração das concessões existentes.
-A política atual continua exigindo usuário ativo, vínculo e permissão de leitura.
+Status: persistência, serviço e rotas de designação/transferência implementados.
+Migrations aplicadas ao PostgreSQL local do ERP, porta 5433, em `b92f8d06e4a1`.
+Não há proprietários ou perfis atribuídos automaticamente ou alteração das concessões existentes.
+A política exige usuário/vínculo ativos e concessão válida. O [catálogo e a gestão
+de perfis](perfis-e-permissoes.md) integram perfis à leitura, preservando flags antigas.
 
 ## Persistência implementada
 
@@ -19,15 +20,85 @@ As sete categorias propostas estão disponíveis, além de `CUSTOM` para perfis
 personalizados. Categoria é classificação, sem nível numérico ou herança. Não há
 perfis pré-preenchidos nem permissões de módulos futuros.
 
-O banco exige existência e pertencimento dos vínculos. Verificações de usuário e
-vínculo ativos, designação inicial, transferência e proteção contra desativação do
-proprietário pertencem ao próximo fluxo de aplicação. Organizações já existentes
-permanecem sem proprietário até uma designação explícita. Este incremento não
-altera a autorização atual nem implementa permissões por empresa ou delegação.
+O banco exige existência e pertencimento dos vínculos. O serviço de propriedade
+verifica usuários e vínculos ativos. O [ciclo dos vínculos](ciclo-de-vida-de-vinculos.md)
+protege o Master atual contra desativação e exige transferência prévia. Organizações existentes
+permanecem sem proprietário até uma designação explícita. Permissões por empresa
+continuam pendentes; delegação limitada e integração de perfis estão no contrato de perfis.
 
 Doze testes novos cobrem constraints, defaults no ORM e no banco, isolamento,
 ausência de privilégios implícitos e downgrade/upgrade com preservação das estruturas
-anteriores. O catálogo de ações e sua integração à política continuam pendentes.
+anteriores. O catálogo de ações já está integrado às funcionalidades existentes,
+com alterações administrativas reautenticadas e auditadas.
+
+## Designação e transferência implementadas
+
+`identity/ownership.py` oferece dois casos de uso, expostos por `api/v1/ownership.py`:
+
+- `designate`: operador ativo com permissão de provisionamento indica o primeiro
+  proprietário de uma organização ativa que ainda não tenha proprietário.
+- `transfer`: apenas o proprietário atual, com vínculo ativo, pode transferir para
+  outro usuário ativo que já tenha vínculo ativo na mesma organização.
+
+Ambos exigem token de sessão válido e confirmação da senha do próprio ator.
+O serviço identifica o ator pelo token, sem aceitar um identificador de autor do
+cliente. Revalida expiração e revogação depois da verificação de senha. Designação
+não cria nem ativa vínculo e não torna o operador proprietário implicitamente.
+Transferência não concede permissões da plataforma nem altera concessões de leitura.
+O antigo proprietário mantém seus vínculos/perfis; perde a autoridade de transferir.
+
+Cada chamada usa uma sessão de escrita nova e transação própria. Locks na organização
+serializam designações e transferências concorrentes; usuários, credencial, sessão,
+proprietário e vínculos são bloqueados durante a validação. A espera por locks tem
+limite de cinco segundos. Falhas de autoridade usam mensagem única; falhas de banco
+recebem tratamento seguro no adaptador HTTP, sem conceder acesso.
+
+A migration `e7b1c90a42d3`, após `d2a6f09b84c1`, adiciona `OwnershipChange`.
+O histórico grava organização, ator, proprietário anterior, novo proprietário e
+horário, na mesma transação. Não contém senha, hash, token, nome ou e-mail.
+Se essa gravação falhar, a mudança de propriedade também é revertida. O serviço não
+oferece alteração ou exclusão do histórico; a tabela não é um armazenamento imutável
+contra administradores com acesso direto ao banco. Downgrade remove esse histórico.
+
+Quatorze testes novos cobrem autoridade, senha, sessão expirada/revogada, logout
+durante a reautenticação, vínculos inativos ou de outro tenant, atomicidade,
+concorrência e migrations. Testes HTTP adicionais cobrem os limites de tentativas,
+cancelamento, concorrência compartilhada com login e respostas mínimas e seguras.
+Onboarding e convites estão descritos no [fluxo implementado](onboarding-e-convites.md).
+Recuperação de proprietário indisponível continua pendente.
+
+### Contrato HTTP
+
+Requer Bearer e JSON com somente `new_owner_id` (UUID do destinatário) e `password`
+(senha do ator, de 1 a 128 caracteres para verificação; não altera a política de cadastro).
+
+| POST | Autoridade necessária |
+| --- | --- |
+| `/api/v1/organizations/{organization_id}/ownership/designate` | Provisionador ativo; organização ativa e sem proprietário |
+| `/api/v1/organizations/{organization_id}/ownership/transfer` | Proprietário atual ativo com vínculo ativo; destinatário diferente |
+
+Sucesso retorna **204 sem corpo**, com `Cache-Control: no-store`. O prazo de
+inatividade da sessão é renovado na mesma transação, somente em caso de sucesso.
+Sessão inválida retorna 401. Organização, autoridade, destinatário ou senha recusados
+retornam o mesmo 404: `Não foi possível alterar o proprietário.` Não há consulta
+pública de usuários ou de proprietário para descobrir destinatários.
+
+As duas rotas compartilham contadores Redis próprios: **5 admissões por ator em
+15 minutos, 30 por origem/minuto e 300 gerais/minuto**. Esses valores iniciais são
+definidos no servidor, independentes dos ajustes `AUTH_ACCOUNT_*` do login.
+O identificador do ator vem da sessão; trocar token, tenant ou destinatário não
+reinicia seu contador. Chaves protegem UUID e IP com HMAC. O IP vem da conexão,
+sem interpretar headers encaminhados. Recusa retorna 429 com `Retry-After`.
+
+Login e propriedade compartilham `AUTH_HASH_CONCURRENCY` por worker e espera máxima
+de 250 ms por vaga. Cancelamento mantém a vaga até terminar Argon2 e reverte a
+mudança. Redis indisponível, falta de configuração, capacidade esgotada ou falha de
+banco retornam 503; logout continua disponível. Erros inesperados retornam 500
+genérico, inclusive com debug ligado. Corpo limitado a 4096 bytes; 413 para excesso,
+415 para formato não JSON, 422 para dados inválidos ou extras, sem refletir entradas.
+HTTPS é exigido em staging/production. Não repetir automaticamente uma operação
+com resultado incerto: o histórico interno permite investigação, mas ainda não há
+contrato de idempotência para cliente HTTP.
 
 ## Segmentos e áreas atendidas
 
@@ -146,13 +217,17 @@ Restringir exportação e detalhamento independentemente da visualização de um
 
 1. Concluído nesta etapa: persistir proprietário, perfis e atribuições por tenant
    com integridade contra referências a outro tenant. Nenhum usuário existente
-   vira Master implicitamente. Migration aguarda revisão antes de aplicação local.
-2. Definir a atribuição inicial de proprietário no provisionamento e sua transferência.
-   Tratar organizações existentes sem proprietário explicitamente.
-3. Implementar cadastro/convite de usuários e delegação administrativa com auditoria
-   mínima e sem conhecimento da senha do convidado pelo administrador.
-4. Aplicar o catálogo às funcionalidades existentes, mantendo a proteção atual e
-   validando a migração das concessões anteriores sem ampliar acesso silenciosamente.
+   vira Master implicitamente. Migrations revisadas e aplicadas ao banco local após testes.
+2. Designação explícita e transferência concluídas, com contratos e rotas protegidas
+   por reautenticação limitada. Não há backfill automático de organizações.
+3. Onboarding e convites implementados: cadastro ou confirmação de conta no aceite,
+   primeiro Master e vínculos mínimos, revogação e trilha de emissão/aceite/revogação.
+   Administrador não define senha do convidado. Atribuição de perfis pode ser delegada
+   com teto; ativação/desativação de vínculos implementada com proteção do Master.
+   Só Master convida colaboradores. Administração global de usuários permanece separada.
+4. Catálogo e gestão de perfis implementados nas funcionalidades existentes, com
+   concessões de leitura, atribuições e tetos de delegação auditados. Flags anteriores
+   preservadas; conversão depende de etapa própria sem ampliar acesso silenciosamente.
 5. Acrescentar perfis e permissões de áreas e verticais conforme seus módulos forem
    implementados. Construir a interface de gestão após estabilizar os contratos.
 
@@ -160,3 +235,15 @@ Critérios de validação: isolamento entre tenants e empresas, proibição de
 autoelevação, limites de delegação, proteção do proprietário, revogação, concorrência
 na transferência e execução/aprovação separadas quando aplicáveis. Testar primeiro
 em banco temporário; o ambiente real só recebe migrations revisadas.
+
+Validação da etapa de propriedade: suíte completa com 173 testes aprovada. No banco local,
+Alembic confirmou alinhamento do schema, contagens anteriores preservadas e nenhum
+proprietário automático. Health respondeu 200; ambas as rotas constam no OpenAPI
+e retornam 401 sem sessão. Sucesso com credenciais foi testado apenas na infraestrutura
+isolada; não foram usadas credenciais reais do desenvolvedor para transferir propriedade.
+Após onboarding/convites, a suíte completa passou a 208 testes; a validação atual
+está no [documento de convites](onboarding-e-convites.md#respostas-e-operação-local).
+Após perfis e permissões, a suíte completa passou a 248 testes. A validação atual
+está no [contrato de perfis](perfis-e-permissoes.md#validação-da-entrega).
+Com o ciclo de vida dos vínculos, a suíte completa passou a 274 testes. Validação
+atual no [contrato de vínculos](ciclo-de-vida-de-vinculos.md#validação).

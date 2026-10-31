@@ -195,9 +195,55 @@ apropriado.
    proprietário por organização, perfis e atribuições com FKs compostas que impedem
    referências entre tenants. Categorias sem herança e defaults inativos.
    Migration `d2a6f09b84c1` validada em banco temporário, sem aplicação local nesta
-   etapa. Doze testes novos e suíte completa com 142 testes. Próximo incremento:
-   designação inicial e transferência segura de proprietário, antes das rotas de
-   gestão e da integração do catálogo de permissões.
+   etapa. Doze testes novos e suíte completa com 142 testes nessa primeira entrega.
+   Incremento seguinte: serviço interno de designação inicial pelo provisionador
+   e transferência exclusiva pelo proprietário, ambos com sessão e senha válidas,
+   vínculos ativos, locks e histórico na mesma transação. Migration de histórico
+   `e7b1c90a42d3`, sem aplicação local. Quatorze testes adicionais de segurança,
+   concorrência, atomicidade e migrations; suíte completa com 156 testes aprovada.
+   Contratos e rotas de propriedade implementados com respostas mínimas, rate limit
+   por ator/origem/geral separado do login e vagas de hash compartilhadas. Sucesso
+   renova inatividade na mesma transação; recusas não renovam. Próximo passo:
+   onboarding e convites/vínculos seguros, antes da gestão e do catálogo.
+   Suíte completa atual: 173 testes aprovados. Após revisão, migrations aplicadas
+   ao PostgreSQL local do ERP na porta 5433, revisão `e7b1c90a42d3 (head)`.
+   Alembic check sem diferenças; contagens anteriores preservadas, nenhum Master
+   atribuído e nenhum banco temporário restante. Health 200 e novas rotas no OpenAPI,
+   com recusa 401 sem sessão. Fluxo de sucesso validado em infraestrutura isolada.
+   Onboarding e convites implementados: operador provisiona e convida primeiro
+   Master; Master convida colaboradores. Aceite cria conta ou confirma senha da
+   conta existente sem substituir credenciais. Tokens de uso único, validade de
+   24 horas, hash, revogação, reemissão e autoridade revalidada; nenhuma sessão ou
+   perfil automático. Leitura do tenant inicial explícita para Master; colaborador
+   sem leitura por padrão. Entrega do token manual, sem envio de e-mail nesta etapa.
+   Migration `f3a82c17d905`; contrato em `docs/onboarding-e-convites.md`.
+   Validação atual: 208 testes aprovados, 35 novos para convites. Migration aplicada
+   à porta 5433 em `f3a82c17d905 (head)`, sem alteração das contagens anteriores ou
+   criação de convites reais. Schema alinhado e bancos temporários removidos.
+   API local atualizada: health 200, cinco contratos no OpenAPI, gestão sem sessão
+   401 e aceite de token inexistente 400. Entrega e verificação de e-mail precisam
+   de integração antes de produção; token manual depende da confiança no emissor.
+   Catálogo fechado e gestão de perfis implementados em `identity/permissions.py`,
+   `permission_models.py`, `roles.py` e `api/v1/roles.py`. Concessões iniciais de
+   `organizations.read` e `identity.roles.read`; ações administrativas reservadas
+   ao Master ou à delegação explícita de atribuições. Tetos, origem, revisões,
+   auditoria transacional e invalidação por transferência/revogação implementados.
+   Flags antigas preservadas, sem conversão automática. Diretório mínimo somente
+   para Master, listas paginadas e dados de credenciais fora das respostas.
+   Validação atual: 248 testes aprovados, 40 novos de perfis. Migration
+   `a81e73c405bf` aplicada à porta 5433 com schema alinhado, flags/status/contagens
+   preservados, sem novas concessões ou delegações reais e sem bancos temporários
+   restantes. API local atualizada: health 200, novos contratos no OpenAPI e
+   recusa 401 sem sessão. Detalhes em `docs/perfis-e-permissoes.md`.
+   Ciclo de vínculos implementado: GET/PUT de status somente para Master, confirmação
+   de senha, revisão e propriedade atual protegida. Desativação limpa leitura antiga,
+   perfis, delegação/concessões originadas e convites pendentes no tenant; reativação
+   não restaura acesso. Conta global, sessões e outros tenants são preservados.
+   Validação atual: 274 testes aprovados, 26 novos. Migration `b92f8d06e4a1` aplicada
+   à porta 5433, schema alinhado e flags/status/contagens anteriores preservados.
+   Nenhum vínculo real alterado e nenhum banco temporário restante. API local com
+   health 200, GET/PUT de status no OpenAPI e recusa 401 sem sessão. Documentação em
+   `docs/ciclo-de-vida-de-vinculos.md`. Downgrade bloqueia perda do histórico de status.
    Documentação essencial em `docs/autenticacao.md` e `docs/api-organizations.md`,
    em nível intermediário de detalhe (5/10), conforme preferência do desenvolvedor.
    Mensagens de validação do bootstrap ajustadas para indicar campo e regra sem
@@ -358,6 +404,11 @@ dados estiverem disponíveis e forem aprovadas individualmente.
 
 Esta etapa registra direção de produto; não cria agora tabelas, rotas, tarefas
 agendadas, modelos de IA ou módulos adicionais. A entrega atual é a base de
-persistência de proprietários, perfis e atribuições, validada em banco temporário.
-O próximo incremento é a designação e transferência segura de proprietário antes
-das rotas de gestão de usuários e da integração do catálogo de permissões.
+persistência de proprietários, perfis e atribuições e o serviço interno de designação
+e transferência com reautenticação e histórico, validados em banco temporário.
+As rotas de propriedade já incluem limites de reautenticação e respostas mínimas.
+Onboarding e convites/vínculos mínimos estão implementados com aceite e revogação.
+O catálogo de permissões e a gestão de perfis/atribuições com teto de delegação estão
+implementados. Ativação/desativação de vínculos e proteção do Master também estão
+implementadas. O próximo incremento é a revisão explícita das concessões antigas
+e dos contratos de Company, antes dos módulos empresariais.

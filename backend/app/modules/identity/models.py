@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, SmallInteger, String, false, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, SmallInteger, String, false, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -62,6 +62,9 @@ class OrganizationMembership(Base):
     """Vincula usuário a tenant sem conceder permissões por padrão."""
 
     __tablename__ = "organization_memberships"
+    __table_args__ = (CheckConstraint("revision > 0", name="ck_memberships_revision"),)
+
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True,

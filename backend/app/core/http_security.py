@@ -29,7 +29,11 @@ class ProtectedApiBoundary:
                 message = {**message, "headers": headers + [(b"cache-control", b"no-store"), (b"pragma", b"no-cache")]}
             await send(message)
 
-        if path.rstrip("/") in (self.prefix + "/auth/login", self.prefix + "/organizations") and scope.get("method") == "POST":
+        # Todas as escritas de organização e os corpos de credenciais são limitados.
+        bounded_path = path.startswith(self.prefix + "/organizations") or path.rstrip("/") in (
+            self.prefix + "/auth/login", self.prefix + "/auth/invitations/accept",
+        )
+        if bounded_path and scope.get("method") in ("POST", "PUT", "PATCH"):
             content_type = dict(scope.get("headers", [])).get(b"content-type", b"").split(b";", 1)[0].strip().lower()
             if content_type != b"application/json":
                 await JSONResponse({"detail": "Envie dados no formato JSON."}, 415)(scope, receive, secure_send)

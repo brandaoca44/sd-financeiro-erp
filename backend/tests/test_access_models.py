@@ -187,7 +187,9 @@ class AccessModelsTests(DatabaseTestCase):
             await asyncio.to_thread(self.run_migration, "downgrade", "c418d69a02be")
             self.assertIsNotNone(await self.session.get(User, user_id))
             self.assertIsNotNone(await self.session.get(Organization, organization_id))
-            self.assertIsNotNone(await self.session.get(OrganizationMembership, (user_id, organization_id)))
+            # A revisão do vínculo só existe em migrations posteriores à versão histórica.
+            self.assertIsNotNone(await self.session.scalar(select(OrganizationMembership.user_id).where(
+                OrganizationMembership.user_id == user_id, OrganizationMembership.organization_id == organization_id)))
             enum_count = await self.session.scalar(text(
                 "SELECT count(*) FROM pg_type WHERE typname IN "
                 "('organization_role_category', 'organization_role_status', 'organization_role_assignment_status')"

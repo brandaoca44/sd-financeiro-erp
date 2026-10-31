@@ -6,6 +6,8 @@ from logging.config import fileConfig
 from app.modules.organizations import models as organization_models
 from app.modules.identity import models as identity_models
 from app.modules.identity import access_models
+from app.modules.identity import invitation_models
+from app.modules.identity import permission_models
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
