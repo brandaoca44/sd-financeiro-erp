@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import quote_plus
 
@@ -29,8 +30,9 @@ class Settings(BaseSettings):
     database_echo: bool = Field(default=False)
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=Path(__file__).resolve().parents[2] / ".env",
         env_file_encoding="utf-8",
+        hide_input_in_errors=True,
         case_sensitive=False,
         extra="ignore",
     )

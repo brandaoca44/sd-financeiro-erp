@@ -13,7 +13,7 @@ async def is_database_available() -> bool:
 
         return True
 
-    except (SQLAlchemyError, PostgresConnectionError, OSError):
+    except (SQLAlchemyError, OSError):
         # Remove do pool conexões que podem ter sido encerradas pelo PostgreSQL.
         await engine.dispose()
 
