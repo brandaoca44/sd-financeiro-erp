@@ -18,6 +18,7 @@ Na desativação, a mesma transação:
 
 - Define o vínculo como `INACTIVE` e remove sua concessão antiga de leitura.
 - Inativa os perfis atribuídos ao vínculo, incrementando suas revisões.
+- Inativa as concessões de leitura de empresas do vínculo naquele tenant e avança suas revisões.
 - Inativa sua delegação, incrementa a revisão e inativa atribuições originadas dela
   na organização, inclusive as concedidas a outros membros.
 - Revoga convites pendentes emitidos pelo alvo ou destinados ao seu e-mail nessa
@@ -26,7 +27,7 @@ Na desativação, a mesma transação:
   processadas. Falha de auditoria reverte toda a alteração.
 
 Reativar **não restaura acesso anterior**: mantém leitura antiga desabilitada,
-perfis e delegação inativos. Também processa concessões remanescentes para impedir
+perfis, delegação e concessões de empresa inativos. Também processa concessões remanescentes para impedir
 reativação de acessos inseridos fora do fluxo normal. O Master deverá revisar e
 atribuir novamente os perfis necessários com as revisões atuais. Uma conta global
 inativa não pode ser ativada por esse fluxo.

@@ -15,6 +15,11 @@ O ERP atende exclusivamente empresas. O identificador jurídico de `Company` é
 CNPJ, sem alternativa por CPF. O usuário é a pessoa autorizada a operar o ERP;
 isso não representa atendimento a cliente pessoa física. Organization agrupa as
 empresas do cliente e não duplica seus identificadores jurídicos.
+O [cadastro de Company](api-companies.md) já está disponível ao Master, com CNPJ
+numérico/alfanumérico e unicidade dentro do tenant. Não há compartilhamento entre
+organizações que cadastrem o mesmo CNPJ.
+Colaboradores só consultam o cadastro de empresas mediante [concessão explícita
+à empresa](acesso-por-empresa.md); leitura de Organization não concede essa permissão.
 
 | Operação | Condições |
 | --- | --- |
@@ -23,6 +28,7 @@ empresas do cliente e não duplica seus identificadores jurídicos.
 | Designar/transferir proprietário | Sessão válida, senha do ator e autoridade específica; [contrato](hierarquia-e-permissoes.md#contrato-http) |
 | Onboarding e convites | Provisionador para primeiro Master; Master para colaboradores; [contrato](onboarding-e-convites.md) |
 | Alterar status de vínculo | Somente Master, com senha, revisão e proprietário atual protegido; [contrato](ciclo-de-vida-de-vinculos.md) |
+| Revisar leitura antiga | Somente Master; conversão restrita ou revogação com senha e revisões; [contrato](revisao-de-acessos.md) |
 
 Provisionamento e leitura são permissões independentes. O primeiro operador pode
 criar tenants, mas não recebe acesso global ou vínculos automáticos com eles.

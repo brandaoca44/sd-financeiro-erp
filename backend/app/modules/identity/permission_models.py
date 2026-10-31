@@ -67,7 +67,7 @@ class OrganizationAccessChange(Base):
         ForeignKeyConstraint(["target_user_id", "organization_id"],
             ["organization_memberships.user_id", "organization_memberships.organization_id"],
             ondelete="RESTRICT", name="fk_access_changes_member"),
-        CheckConstraint("action IN ('ROLE_CREATED', 'ROLE_UPDATED', 'ASSIGNMENT_SET', 'DELEGATION_SET', 'MEMBERSHIP_SET')",
+        CheckConstraint("action IN ('ROLE_CREATED', 'ROLE_UPDATED', 'ASSIGNMENT_SET', 'DELEGATION_SET', 'MEMBERSHIP_SET', 'LEGACY_READ_CONVERTED', 'LEGACY_READ_REVOKED')",
                         name="ck_access_changes_action"),
         Index("ix_access_changes_organization", "organization_id", "created_at"),
     )

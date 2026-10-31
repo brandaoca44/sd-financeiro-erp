@@ -113,7 +113,9 @@ ainda precisa de política de manutenção antes da produção.
 Após a validação em bancos temporários, as migrations foram aplicadas ao banco
 local do ERP: autenticação inicialmente em `c418d69a02be`; hierarquia e histórico
 posteriormente em `e7b1c90a42d3`, convites em `f3a82c17d905` e perfis/permissões em
-`a81e73c405bf`, e ciclo de vínculos em `b92f8d06e4a1 (head)`, sem diferenças pendentes de schema.
+`a81e73c405bf`, ciclo de vínculos em `b92f8d06e4a1` e revisão de leitura em
+`c74e901a6bd2`, cadastro de empresas em `d85fa1049ce3` e concessões por empresa em
+`e96b2130ad74 (head)`, sem diferenças pendentes de schema.
 O segredo foi gerado diretamente em `backend/.env`, sem exibição ou versionamento.
 O primeiro operador foi criado pelo desenvolvedor no comando interativo, sem
 compartilhar senha ou token no chat.

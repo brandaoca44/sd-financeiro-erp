@@ -136,3 +136,12 @@ class OrganizationAccessPolicy:
         )
         with self._session.no_autoflush:
             return (await self._session.scalar(select(authorized.exists()))) is True
+
+    def read_access_query(self, user_id: UUID, organization_id: UUID):
+        """Projeta estado e origem no mesmo snapshot; o chamador autoriza a consulta."""
+        return select(OrganizationMembership, User.status, and_(
+            User.status == UserStatus.ACTIVE, OrganizationMembership.status == MembershipStatus.ACTIVE,
+            self._role_grant(user_id, organization_id, PermissionKey.ORGANIZATION_READ),
+        ).label("profile_read")).join(User).where(
+            OrganizationMembership.user_id == user_id, OrganizationMembership.organization_id == organization_id,
+        )

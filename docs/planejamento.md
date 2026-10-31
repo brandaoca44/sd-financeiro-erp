@@ -8,8 +8,8 @@ Atualizado em 31/10/2026.
 
 O produto atende exclusivamente empresas, sem operação ou contratação para pessoa
 física. `Company` representa empresa identificada por CNPJ; CPF não será aceito como
-identificador alternativo. Validação do CNPJ e regras cadastrais serão detalhadas
-na etapa de Company, com fontes oficiais vigentes antes da implementação.
+identificador alternativo. CNPJ numérico/alfanumérico e regras do cadastro jurídico
+foram implementados na etapa de Company, com base nas fontes oficiais vigentes.
 
 `User` identifica a pessoa autorizada a acessar o ERP, sem constituir cliente
 pessoa física. `Organization` representa o espaço do cliente e agrupa uma ou mais
@@ -244,6 +244,16 @@ apropriado.
    Nenhum vínculo real alterado e nenhum banco temporário restante. API local com
    health 200, GET/PUT de status no OpenAPI e recusa 401 sem sessão. Documentação em
    `docs/ciclo-de-vida-de-vinculos.md`. Downgrade bloqueia perda do histórico de status.
+   Revisão de leitura antiga implementada: Master consulta a origem efetiva da
+   leitura, converte explicitamente a flag em perfil ativo com somente
+   `organizations.read`, ou revoga apenas essa flag. Senha, revisões de vínculo/
+   perfil/atribuição, escopo e auditoria são validados na mesma transação. Não há
+   conversão automática, retirada da coluna ou alteração dos contratos de convite.
+   Validação atual: 302 testes aprovados, 28 novos. Migration `c74e901a6bd2` aplicada
+   à porta 5433 com flags/status/revisões/contagens preservados, schema alinhado e
+   nenhum acesso real convertido/revogado. Sem bancos temporários restantes. Health
+   local 200, três contratos no OpenAPI e recusa 401 sem sessão. Documento essencial:
+   `docs/revisao-de-acessos.md`. Próximo incremento: contratos de Company/CNPJ.
    Documentação essencial em `docs/autenticacao.md` e `docs/api-organizations.md`,
    em nível intermediário de detalhe (5/10), conforme preferência do desenvolvedor.
    Mensagens de validação do bootstrap ajustadas para indicar campo e regra sem
@@ -255,11 +265,36 @@ apropriado.
    e indisponibilidade do armazenamento antes de disponibilizar autenticação.
    Endpoints não serão expostos sem controles
    mínimos de identidade, vínculos e permissões, que precederão sua publicação.
-4. Aplicação de Company: contratos, validações, persistência e endpoints, em etapas
-   separadas, revisando a regra de unicidade do identificador fiscal.
+4. Aplicação de Company: cadastro jurídico implementado com contratos, repository,
+   service e rotas. Master cria/consulta/edita nomes e status interno, com senha,
+   revisão e auditoria transacional. CNPJ numérico/alfanumérico validado em Python
+   e PostgreSQL conforme manual oficial, canônico e imutável na edição. Unicidade
+   revisada para `(organization_id, tax_id)`, sem descoberta ou compartilhamento
+   entre tenants. Migration `d85fa1049ce3` valida legado sem correção automática e
+   protege downgrade incompatível. Contrato em `docs/api-companies.md`. Leitura de
+   colaboradores por empresa foi acrescentada no incremento de isolamento abaixo;
+   operações fiscais/financeiras específicas continuam pendentes.
+   Validação atual: 332 testes aprovados, 30 novos, incluindo regressões da extração
+   da autorização transacional compartilhada. Migration aplicada em `d85fa1049ce3`
+   na porta 5433, schema alinhado e dados/flags/status/revisões/contagens anteriores
+   preservados. Nenhuma empresa real criada/alterada e nenhum banco temporário
+   restante. API local: health 200, quatro operações empresariais no OpenAPI e
+   recusa 401 sem sessão. Vetores oficiais e lógica Python/SQL validados em banco
+   temporário, sem consultas externas ou credenciais reais nos testes.
 5. Identidade e isolamento: estratégia de tenancy, autenticação, autorização,
    vínculos e permissões por empresa; validar acessos indevidos entre tenants.
    Esses controles são necessários antes de operar com dados reais multi-tenant.
+   Leitura de cadastros por empresa implementada: concessão direta `companies.read`
+   pelo Master, com revisão da empresa, vínculo e concessão. Sem wildcard ou acesso
+   a empresas futuras. Listagem filtra a autorização antes da paginação; consulta
+   por UUID exige o mesmo escopo. Vínculo/empresa inativos negam acesso; inativar e
+   reativar limpa concessões sem restaurá-las. Transferência preserva concessões
+   diretas e muda o administrador. Migração `e96b2130ad74`, sem semear acesso.
+   Auditoria transacional e constraints compostas protegem escopo e integridade.
+   Contrato em `docs/acesso-por-empresa.md`. Não inclui ações fiscais/financeiras.
+   Validação: 363 testes aprovados, incluindo 31 novos. Migration aplicada no
+   PostgreSQL local, porta 5433, preservando dados anteriores e sem criar concessões
+   reais. Health 200 e rotas protegidas com resposta 401 sem sessão.
 6. Base operacional: auditoria, erros e logs seguros, segredos por ambiente,
    backup e restauração, validações automatizadas.
 7. Definição e entrega do MVP: selecionar os fluxos necessários de cadastros,
@@ -410,5 +445,8 @@ As rotas de propriedade já incluem limites de reautenticação e respostas mín
 Onboarding e convites/vínculos mínimos estão implementados com aceite e revogação.
 O catálogo de permissões e a gestão de perfis/atribuições com teto de delegação estão
 implementados. Ativação/desativação de vínculos e proteção do Master também estão
-implementadas. O próximo incremento é a revisão explícita das concessões antigas
-e dos contratos de Company, antes dos módulos empresariais.
+implementadas. A revisão explícita das concessões antigas também está implementada,
+com conversão restrita e revogação auditadas. O cadastro básico de Company/CNPJ
+está implementado. A leitura de cadastros por colaboradores já exige concessão
+explícita por empresa. O próximo incremento é a base operacional, começando por
+backup/restauração e validação da recuperação, antes dos módulos empresariais.

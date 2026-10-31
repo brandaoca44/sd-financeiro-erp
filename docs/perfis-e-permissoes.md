@@ -2,8 +2,9 @@
 
 ## Regras implementadas
 
-O catálogo cobre somente ações existentes. O escopo desta entrega é a organização
-exata da rota, sem empresas, módulos futuros, curingas ou herança entre cargos.
+O catálogo cobre somente ações existentes. Perfis têm escopo da organização exata
+da rota; concessões por empresa são separadas. Não há módulos futuros, curingas
+ou herança entre cargos.
 Categoria como CEO ou Gerente apenas classifica o perfil; não concede autoridade.
 
 | Chave | Como é concedida |
@@ -14,7 +15,10 @@ Categoria como CEO ou Gerente apenas classifica o perfil; não concede autoridad
 | `identity.assignments.manage` | Master atual ou delegação explícita com teto |
 | `identity.delegations.manage` | Somente Master atual |
 | `identity.members.read` | Somente Master atual |
-| `identity.members.manage` | Somente Master atual; ciclo de vida protegido |
+| `identity.members.manage` | Somente Master atual; ciclo de vida e revisão de leitura antiga |
+| `companies.read` | Master atual ou concessão explícita à empresa; cadastro jurídico autorizado |
+| `companies.manage` | Somente Master atual; cadastro/edição com confirmação de senha |
+| `companies.access.manage` | Somente Master atual; define leitura de empresa para vínculo existente |
 
 Somente as duas primeiras chaves podem compor perfis ou tetos. As demais descrevem
 regras administrativas específicas, sem concessão por perfil. Somar perfis não cria
@@ -137,7 +141,9 @@ Conhecer um cargo ou UUID não concede acesso.
 `can_read_organization` e `can_provision_organizations` são preservados. Leitura do
 tenant combina concessão antiga **ou** perfil autorizado. Retirar um perfil não
 revoga uma concessão antiga; conferir `legacy_read` quando houver acesso remanescente.
-A conversão dessas flags exige um incremento próprio, sem ampliar acesso silenciosamente.
+A [revisão das flags de leitura](revisao-de-acessos.md) já permite conversão explícita
+e revogação auditadas, sem ampliar acesso. Não há conversão automática, remoção da
+coluna ou alteração de `can_provision_organizations`.
 
 Cada escrita registra ator, tenant, alvo, ação e estados mínimos de status,
 permissões, revisões e origem. Não grava senha, token, nome ou e-mail nos snapshots.
@@ -151,9 +157,13 @@ usar downgrade como mecanismo de revogação de produção.
 O [ciclo de vida dos vínculos](ciclo-de-vida-de-vinculos.md) já oferece ativação e
 desativação protegidas. Desativação explícita remove a leitura antiga e inativa perfis
 e delegações; reativação não restaura essas concessões. Ainda pendentes: administração
-global/recuperação do proprietário, conversão das flags antigas, permissões por empresa e dos módulos futuros, interface
+global/recuperação do proprietário, descontinuação dos contratos antigos, permissões dos módulos futuros por empresa, interface
 de gestão e entrega/verificação de e-mail antes da produção. Não há liberação fiscal,
 financeira, clínica, de produtos ou serviços sem os módulos e contratos correspondentes.
+O [cadastro jurídico de Company](api-companies.md) já permite leitura de
+colaboradores por [concessão explícita à empresa](acesso-por-empresa.md).
+Essas concessões não são permissões de perfis organizacionais e não autorizam
+operações financeiras/fiscais ou edição. Master mantém administração do cadastro.
 
 ## Validação da entrega
 
@@ -171,3 +181,6 @@ Sucesso com credenciais foi validado na infraestrutura isolada, sem uso das senh
 ou tokens reais do desenvolvedor.
 Depois do ciclo de vínculos, a suíte passou a 274 testes; a validação atual está
 no [documento de vínculos](ciclo-de-vida-de-vinculos.md#validação).
+
+Com a leitura por empresa, a suíte passou a 363 testes. Validação atual no
+[contrato de acesso por empresa](acesso-por-empresa.md).

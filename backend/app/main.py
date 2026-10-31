@@ -18,6 +18,8 @@ from app.api.v1.ownership import router as ownership_router
 from app.api.v1.invitations import router as invitations_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.memberships import router as memberships_router
+from app.api.v1.legacy_access import router as legacy_access_router
+from app.api.v1.company_access import router as company_access_router
 from app.core.config import Settings, get_settings
 from app.core.http_security import ProtectedApiBoundary
 from app.database.session import async_session_factory, close_database_engine
@@ -25,6 +27,7 @@ from app.modules.identity.authentication import AuthenticationService
 from app.modules.identity.passwords import hash_password
 from app.modules.identity.rate_limit import LoginRateLimiter, LoginRateLimitPolicy
 from app.modules.organizations.router import router as organization_router
+from app.modules.organizations.company_router import router as company_router
 
 def create_app(
     settings: Settings | None = None, *, session_factory=None, redis_client: Redis | None = None,
@@ -118,6 +121,9 @@ def create_app(
     application.include_router(invitations_router, prefix=config.api_v1_prefix)
     application.include_router(roles_router, prefix=config.api_v1_prefix)
     application.include_router(memberships_router, prefix=config.api_v1_prefix)
+    application.include_router(legacy_access_router, prefix=config.api_v1_prefix)
+    application.include_router(company_router, prefix=config.api_v1_prefix)
+    application.include_router(company_access_router, prefix=config.api_v1_prefix)
     return application
 
 

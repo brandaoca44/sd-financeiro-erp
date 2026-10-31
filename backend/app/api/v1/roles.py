@@ -55,6 +55,8 @@ async def guarded_access(request, actor_id, *, service_class=RoleService):
     except IntegrityError as error:
         if getattr(getattr(error.orig, "diag", None), "constraint_name", None) == "uq_organization_roles_name":
             raise HTTPException(409, "Já existe um perfil com esse nome na organização.") from None
+        if getattr(getattr(error.orig, "diag", None), "constraint_name", None) == "uq_companies_tenant_tax_id":
+            raise HTTPException(409, "Já existe uma empresa com esse CNPJ nesta organização.") from None
         raise unavailable() from None
     except (LoginRateLimitUnavailableError, SQLAlchemyError, ValueError):
         raise unavailable() from None

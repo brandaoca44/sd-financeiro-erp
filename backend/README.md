@@ -36,6 +36,12 @@ pelo Compose ficam restritas ao computador local. O backend lê especificamente
 | `organizations/repository.py` | Persistência com flush, sem commit |
 | `organizations/service.py` | Casos de uso e transação da criação |
 | `organizations/router.py` | Rotas protegidas por sessão e permissões |
+| `organizations/cnpj.py` | Normalização ASCII e dígitos verificadores do CNPJ numérico/alfanumérico |
+| `organizations/company_schemas.py` | Contratos jurídicos sem CPF ou alteração de tenant/CNPJ na edição |
+| `organizations/company_repository.py` | Persistência sempre limitada ao tenant, sem commit |
+| `organizations/company_service.py` | Cadastro/edição com reautenticação, revisão e auditoria atômica |
+| `organizations/company_router.py` | Cadastro pelo Master e leitura no escopo autorizado da empresa |
+| `identity/access_security.py` | Autorização transacional e reautenticação compartilhadas por perfis e empresas |
 | `identity/authorization.py` | Usuário ativo e concessões por tenant |
 | `identity/access_models.py` | Proprietário, perfis e atribuições com FKs entre registros do mesmo tenant |
 | `identity/ownership.py` | Designação e transferência com senha, sessão, locks e histórico atômico |
@@ -49,6 +55,12 @@ pelo Compose ficam restritas ao computador local. O backend lê especificamente
 | `api/v1/roles.py` | Rotas administrativas com senha, rate limit e revisões |
 | `identity/memberships.py` | Ciclo do vínculo, limpeza de concessões e proteção do Master |
 | `api/v1/memberships.py` | Consulta e alteração mínima do status do vínculo |
+| `identity/legacy_access.py` | Revisão de origem, conversão restrita e revogação da flag de leitura antiga |
+| `api/v1/legacy_access.py` | Rotas de revisão/conversão somente para Master |
+| `identity/company_access_models.py` | Concessões diretas por empresa/vínculo e auditoria |
+| `identity/company_authorization.py` | Política de visibilidade aplicada na consulta e antes da paginação |
+| `identity/company_access.py` | Concessão/revogação pelo Master com revisões de empresa, vínculo e concessão |
+| `api/v1/company_access.py` | Consulta e gestão de leitura por empresa |
 | `identity/passwords.py` | Argon2id e atualização dos parâmetros do hash |
 | `identity/sessions.py` | Tokens opacos, inatividade e revogação |
 | `identity/rate_limit.py` | Limites compartilhados no Redis |
@@ -77,7 +89,7 @@ Ele confirma o destino e solicita nome, e-mail e senha oculta. Cria usuário ati
 hash e marcador único na mesma transação, sem acesso automático a tenants.
 Não cria conta padrão, não promove contas existentes e não emite sessão.
 
-As migrations foram aplicadas ao banco local, na revisão `b92f8d06e4a1 (head)`.
+As migrations foram aplicadas ao banco local, na revisão `e96b2130ad74 (head)`.
 O segredo do rate limit foi gerado no `.env`, sem exibição. A API local foi validada
 com health 200 e recusa de acessos sem sessão. O operador foi criado e o desenvolvedor
 confirmou login 200, logout 204 e recusa do token revogado 401 via Swagger em
@@ -98,20 +110,26 @@ ou existente, primeiro Master, colaboradores e revogação. Não envia e-mail: o
 nem concede perfis automaticamente. O [catálogo e a gestão de perfis](../docs/perfis-e-permissoes.md)
 já permitem concessões explícitas e delegação limitada de atribuições. O [ciclo
 dos vínculos](../docs/ciclo-de-vida-de-vinculos.md) permite ativação/desativação pelo
-Master sem remover o proprietário atual. Conversão das flags antigas segue pendente;
-desativação explícita remove a leitura antiga daquele vínculo como parte da revogação.
+Master sem remover o proprietário atual. A [revisão das concessões antigas](../docs/revisao-de-acessos.md)
+permite converter a leitura antiga em perfil restrito ou revogar somente essa origem,
+com auditoria e revisões. A flag permanece por compatibilidade, sem conversão automática.
+O [cadastro de Company](../docs/api-companies.md) já permite criação, consulta e
+edição jurídica por Master, com CNPJ validado na API e no banco, unicidade por tenant
+e identificação imutável na edição. [Concessões explícitas por empresa](../docs/acesso-por-empresa.md)
+já permitem leitura dos cadastros autorizados para colaboradores, sem acesso a
+outras empresas ou módulos. Criação, edição e concessão continuam exclusivas do Master.
 A migration de convites foi aplicada à porta 5433 após os testes, preservando as
 contagens das tabelas anteriores. Alembic check confirmou alinhamento; não foram
 criadas contas, organizações ou convites reais nesta validação.
 
 ## Testes
 
-Última validação completa: 274 testes aprovados. A etapa de vínculos adicionou 26
-testes, cobrindo proteção do Master, isolamento, revogação, reativação mínima,
-concorrência e auditoria. Migration aplicada à porta 5433, com flags/status e contagens
-anteriores preservados, schema alinhado e nenhuma alteração real de vínculo criada.
-A API local foi reiniciada e validada com health 200, GET/PUT de status no OpenAPI e
-recusa 401 sem sessão. O sucesso foi validado em infraestrutura isolada.
+Última validação completa: 363 testes aprovados. Acesso por empresa adicionou 31
+testes de autorização, paginação, ciclo de vida, concorrência, auditoria e migrations.
+Migration aplicada à porta 5433, com dados/flags/status/revisões/contagens anteriores
+preservados e schema alinhado. Nenhuma concessão real foi criada. API local com
+health 200, GET/PUT de concessão no OpenAPI e recusa 401 sem sessão. Sucesso com
+credenciais foi validado em infraestrutura isolada, sem acesso a dados reais.
 
 Testes sem infraestrutura externa:
 

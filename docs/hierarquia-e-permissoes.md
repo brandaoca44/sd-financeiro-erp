@@ -1,7 +1,7 @@
 # Hierarquia, perfis e permissões
 
 Status: persistência, serviço e rotas de designação/transferência implementados.
-Migrations aplicadas ao PostgreSQL local do ERP, porta 5433, em `b92f8d06e4a1`.
+Migrations aplicadas ao PostgreSQL local do ERP, porta 5433, em `e96b2130ad74`.
 Não há proprietários ou perfis atribuídos automaticamente ou alteração das concessões existentes.
 A política exige usuário/vínculo ativos e concessão válida. O [catálogo e a gestão
 de perfis](perfis-e-permissoes.md) integram perfis à leitura, preservando flags antigas.
@@ -23,8 +23,9 @@ perfis pré-preenchidos nem permissões de módulos futuros.
 O banco exige existência e pertencimento dos vínculos. O serviço de propriedade
 verifica usuários e vínculos ativos. O [ciclo dos vínculos](ciclo-de-vida-de-vinculos.md)
 protege o Master atual contra desativação e exige transferência prévia. Organizações existentes
-permanecem sem proprietário até uma designação explícita. Permissões por empresa
-continuam pendentes; delegação limitada e integração de perfis estão no contrato de perfis.
+permanecem sem proprietário até uma designação explícita. A [leitura de cadastro
+por empresa](acesso-por-empresa.md) exige concessão específica; permissões dos módulos
+futuros permanecem pendentes. Delegação de perfis não concede autoridade por empresa.
 
 Doze testes novos cobrem constraints, defaults no ORM e no banco, isolamento,
 ausência de privilégios implícitos e downgrade/upgrade com preservação das estruturas
@@ -227,7 +228,8 @@ Restringir exportação e detalhamento independentemente da visualização de um
    Só Master convida colaboradores. Administração global de usuários permanece separada.
 4. Catálogo e gestão de perfis implementados nas funcionalidades existentes, com
    concessões de leitura, atribuições e tetos de delegação auditados. Flags anteriores
-   preservadas; conversão depende de etapa própria sem ampliar acesso silenciosamente.
+   preservadas; conversão de leitura já disponível por operação explícita, restrita
+   e auditada, sem ampliar acesso. Remoção da flag e novos contratos não são automáticos.
 5. Acrescentar perfis e permissões de áreas e verticais conforme seus módulos forem
    implementados. Construir a interface de gestão após estabilizar os contratos.
 
@@ -247,3 +249,12 @@ Após perfis e permissões, a suíte completa passou a 248 testes. A validação
 está no [contrato de perfis](perfis-e-permissoes.md#validação-da-entrega).
 Com o ciclo de vida dos vínculos, a suíte completa passou a 274 testes. Validação
 atual no [contrato de vínculos](ciclo-de-vida-de-vinculos.md#validação).
+Após revisão de leitura antiga, a suíte passou a 302 testes. Validação atual no
+[contrato de revisão de acessos](revisao-de-acessos.md#validação-da-entrega).
+Com o cadastro jurídico de Company, a suíte passou a 332 testes. Validação atual
+no [contrato de empresas](api-companies.md#validação-da-entrega). Cadastro de empresas
+é administrado pelo Master; colaboradores só consultam empresas mediante concessão
+específica. Permissões operacionais dos módulos futuros continuam separadas.
+
+Com a leitura por empresa, a suíte passou a 363 testes. Validação atual no
+[contrato de acesso por empresa](acesso-por-empresa.md).

@@ -7,6 +7,7 @@ from sqlalchemy import or_, select, update
 
 from app.modules.identity.access_models import OrganizationRoleAssignment, RoleAssignmentStatus
 from app.modules.identity.authorization import OrganizationAccessPolicy
+from app.modules.identity.company_access_models import CompanyPermissionGrant
 from app.modules.identity.invitation_models import OrganizationInvitation
 from app.modules.identity.membership_schemas import MembershipStatusResponse
 from app.modules.identity.models import MembershipStatus, OrganizationMembership, UserStatus
@@ -40,10 +41,14 @@ class MembershipService(RoleService):
             before = {"status": member.status, "revision": member.revision,
                       "legacy_read": member.can_read_organization}
             reset_grants = data.status == MembershipStatus.INACTIVE or member.status == MembershipStatus.INACTIVE
-            assignments_reset, invitations_revoked = 0, 0
+            assignments_reset, invitations_revoked, company_grants_reset = 0, 0, 0
             delegation_before = None
             if reset_grants:
                 member.can_read_organization = False
+                changed_company_grants = await self.session.execute(update(CompanyPermissionGrant).where(
+                    CompanyPermissionGrant.organization_id == organization_id, CompanyPermissionGrant.user_id == user_id,
+                ).values(status="INACTIVE", revision=CompanyPermissionGrant.revision + 1, updated_by_user_id=actor_id))
+                company_grants_reset = changed_company_grants.rowcount
                 # Inativa tanto os perfis do alvo quanto concessões originadas de sua delegação.
                 changed = await self.session.execute(update(OrganizationRoleAssignment).where(
                     OrganizationRoleAssignment.organization_id == organization_id,
@@ -68,7 +73,7 @@ class MembershipService(RoleService):
             member.revision += 1
             after = {"status": member.status, "revision": member.revision, "legacy_read": member.can_read_organization,
                      "grants_reset": reset_grants, "assignments_reset": assignments_reset,
-                     "invitations_revoked": invitations_revoked}
+                     "invitations_revoked": invitations_revoked, "company_grants_reset": company_grants_reset}
             if delegation_before is not None:
                 before["delegation"] = delegation_before
                 after["delegation"] = {"status": "INACTIVE", "revision": delegation_before["revision"] + 1}

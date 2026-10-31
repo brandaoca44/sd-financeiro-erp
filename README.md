@@ -38,7 +38,10 @@ Ainda não está pronto para produção ou uso multi-tenant com dados reais.
 | Onboarding e convites | Provisionamento com convite ao primeiro Master; aceite de conta nova ou existente, convites mínimos a colaboradores e revogação |
 | Perfis e permissões | Catálogo fechado, gestão de perfis, atribuições por tenant e delegação com teto e origem auditados |
 | Ciclo dos vínculos | Ativação/desativação pelo Master, com limpeza de concessões e proteção do proprietário atual |
-| Testes | 274 testes validados com `unittest`, incluindo integração HTTP, PostgreSQL e Redis |
+| Revisão de acessos | Origem da leitura, conversão explícita da flag antiga em perfil restrito e revogação auditada |
+| Empresas | Cadastro jurídico por tenant, CNPJ numérico/alfanumérico, nomes e status interno; administração inicial pelo Master |
+| Acesso por empresa | Leitura explícita do cadastro para colaboradores, filtragem antes da paginação e revogação no ciclo de vida |
+| Testes | 363 testes validados com `unittest`, incluindo integração HTTP, PostgreSQL e Redis |
 
 Organization possui criação e consulta autenticadas com isolamento de acesso testado
 nessas rotas. Módulos empresariais, permissões por empresa e painel executivo ainda
@@ -247,7 +250,7 @@ continua pendente; o bootstrap não cria operadores adicionais nem recupera cont
 
 O projeto evolui em pequenos ciclos de implementação, validação, revisão e aprovação.
 A interface HTTP de Organization está implementada com autenticação e autorização.
-As migrations foram aplicadas ao banco local em `b92f8d06e4a1 (head)` e o segredo
+As migrations foram aplicadas ao banco local em `e96b2130ad74 (head)` e o segredo
 de autenticação foi configurado sem exibição. A API local teve health e recusas
 de acesso validados. O primeiro operador foi criado e o desenvolvedor confirmou
 login, logout e recusa de sessão revogada via Swagger em 31/10/2026.
@@ -262,6 +265,9 @@ controles de produção seguem pendentes.
 - [Onboarding e convites](docs/onboarding-e-convites.md)
 - [Catálogo de permissões e gestão de perfis](docs/perfis-e-permissoes.md)
 - [Ativação e desativação de vínculos](docs/ciclo-de-vida-de-vinculos.md)
+- [Revisão e conversão das concessões antigas](docs/revisao-de-acessos.md)
+- [Cadastro jurídico de empresas](docs/api-companies.md)
+- [Permissões específicas por empresa](docs/acesso-por-empresa.md)
 - [Hierarquia, perfis e permissões por área e segmento](docs/hierarquia-e-permissoes.md)
 
 ## Licenciamento
