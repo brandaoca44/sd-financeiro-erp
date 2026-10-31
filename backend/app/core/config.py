@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote_plus
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +28,33 @@ class Settings(BaseSettings):
     database_user: str = Field(default="sd_admin")
     database_password: SecretStr
     database_echo: bool = Field(default=False)
+
+    redis_host: str = "127.0.0.1"
+    redis_port: int = Field(default=6379, ge=1, le=65535)
+    redis_db: int = Field(default=0, ge=0, le=15)
+    redis_username: str | None = None
+    redis_password: SecretStr | None = None
+    auth_rate_limit_key: SecretStr | None = Field(default=None, repr=False)
+    auth_idle_timeout_seconds: int = Field(default=1800, ge=1, le=86400)
+    auth_hash_concurrency: int = Field(default=2, ge=1, le=16)
+    auth_account_limit: int = Field(default=5, ge=1, le=1000000)
+    auth_account_window_seconds: int = Field(default=900, ge=1, le=86400)
+    auth_origin_limit: int = Field(default=30, ge=1, le=1000000)
+    auth_origin_window_seconds: int = Field(default=60, ge=1, le=86400)
+    auth_global_limit: int = Field(default=300, ge=1, le=1000000)
+    auth_global_window_seconds: int = Field(default=60, ge=1, le=86400)
+
+    @field_validator("auth_rate_limit_key", mode="before")
+    @classmethod
+    def validate_auth_key(cls, value):
+        """Permite health check sem chave, mas nunca uma autenticação sem segredo."""
+
+        if value is None or value == "":
+            return None
+        secret = value if isinstance(value, SecretStr) else SecretStr(value)
+        if len(secret.get_secret_value().encode("utf-8")) < 32:
+            raise ValueError("A chave de autenticação deve ter pelo menos 32 bytes.")
+        return secret
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",

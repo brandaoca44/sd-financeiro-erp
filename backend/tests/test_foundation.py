@@ -55,7 +55,7 @@ class HealthTests(unittest.IsolatedAsyncioTestCase):
             result = await get_health(response)
         self.assertEqual(response.status_code, 503)
         self.assertEqual(result.status, "unhealthy")
-        self.assertEqual(result.database, "disconnected")
+        self.assertEqual(result.model_dump(), {"status": "unhealthy"})
         self.assertNotIn("password", result.model_dump_json().lower())
 
 

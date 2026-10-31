@@ -1,8 +1,20 @@
 # Planejamento do SD Financeiro ERP
 
-Atualizado em 30/10/2026.
+Atualizado em 31/10/2026.
 
 ## Direção do produto
+
+### Público e identidade jurídica
+
+O produto atende exclusivamente empresas, sem operação ou contratação para pessoa
+física. `Company` representa empresa identificada por CNPJ; CPF não será aceito como
+identificador alternativo. Validação do CNPJ e regras cadastrais serão detalhadas
+na etapa de Company, com fontes oficiais vigentes antes da implementação.
+
+`User` identifica a pessoa autorizada a acessar o ERP, sem constituir cliente
+pessoa física. `Organization` representa o espaço do cliente e agrupa uma ou mais
+empresas, sem duplicar o identificador jurídico de Company. A pessoa que contrata
+ou opera o sistema atua em nome da empresa, conforme os vínculos e permissões.
 
 ERP empresarial generalista, desenvolvido como monólito modular em Python 3.14,
 FastAPI, SQLAlchemy Async e Psycopg, com PostgreSQL. Manter a stack e introduzir
@@ -60,7 +72,7 @@ desperdícios e inovação já previstas, sem mudar a arquitetura ou antecipar m
 
 Essa visão orientará entregas futuras, com escopo e critérios de aceite próprios.
 Não introduzir agora chatbot, agentes autônomos, modelos preditivos, jobs ou novos
-módulos. A entrega atual é o service de Organization, aguardando aprovação.
+módulos. A entrega atual é a integração HTTP de autenticação e proteção de Organization.
 
 ### Área executiva aprovada: painel de desempenho e oportunidades
 
@@ -137,8 +149,66 @@ apropriado.
    ao final. Repository aprovado pelo desenvolvedor. Service implementado com
    criação transacional, conversão para resposta e consulta opcional por UUID;
    falhas revertem a criação. Suíte completa com 24 testes aprovados, incluindo
-   quatro novos testes do service no banco temporário exclusivo. Service aguarda
-   revisão e aprovação; endpoints serão uma etapa posterior separada.
+   quatro novos testes do service no banco temporário exclusivo. Service aprovado
+   pelo desenvolvedor. Contratos HTTP e política de acesso especificados em
+   `docs/api-organizations.md`. A base de identidade possui `User` e
+   `OrganizationMembership`, defaults restritivos e migration `4db0f645bda1`
+   validada apenas em banco temporário. Oito testes novos passaram, totalizando
+   32 testes. Política `OrganizationAccessPolicy` implementada com verificações
+   SQL de usuário ativo e concessões no tenant, sem leitura global implícita.
+   Onze testes novos validam matriz de permissões, separação entre tenants,
+   revogação confirmada e falhas; suíte completa com 43 testes aprovados.
+   Proteção de senhas implementada com `pwdlib[argon2]`, funções assíncronas e
+   armazenamento separado `UserPasswordCredential`. Migration `9e3d7a51c286`
+   validada somente em banco temporário. Oito testes de hash e quatro de persistência
+   passaram; suíte completa com 55 testes aprovados.
+   Fluxo de autenticação, bootstrap e publicação HTTP continuam pendentes.
+   Sessões internas implementadas com tokens opacos, hash persistido, expiração
+   somente por inatividade e revogação. Atividade válida renova o prazo; não há
+   duração máxima absoluta enquanto o usuário trabalha. Consultas automáticas
+   não renovam a sessão. Migration `ba72c81409ef` validada somente em banco
+   temporário. Dois testes de configuração e 20 de integração de sessões;
+   suíte validada nessa etapa com 77 testes. Rate limit interno implementado com
+   `redis-py`, Lua atômico, limites por conta/origem/geral e HMAC para chaves.
+   Oito testes unitários e oito testes Redis adicionados; suíte completa com 93
+   testes aprovados nessa etapa. Bootstrap administrativo implementado com comando
+   interativo, senha oculta, criação transacional, advisory lock e marcador único.
+   Migration `c418d69a02be` validada somente em banco temporário; nenhuma conta
+   real criada. Nove testes de entrada/CLI e nove de integração adicionados,
+   totalizando 111 testes nessa etapa. Login e logout HTTP implementados com rate
+   limit, revalidação de credencial na emissão, respostas seguras e limite de hash.
+   Rotas de Organization exigem sessão e permissão no servidor, com resposta 404
+   uniforme para tenants sem acesso. Dezesseis testes HTTP adicionados; total de
+   127 testes validados. Após revisão, migrations aplicadas ao banco local na
+   revisão `c418d69a02be (head)` e segredo gerado no `.env`, sem exibição.
+   API local validada: health 200 e acesso sem sessão/login inexistente com 401.
+   Primeiro operador criado pelo desenvolvedor. Validação manual confirmada em
+   31/10/2026: login 200, logout 204 e acesso protegido com token revogado 401.
+   Etapa de autenticação local aprovada; próxima etapa é definir gestão de usuários
+   e vínculos organizacionais, sem cadastro público ou concessão automática de privilégios.
+   Desenho da hierarquia e delegação registrado em `docs/hierarquia-e-permissoes.md`:
+   proprietário/Master do tenant separado do operador da plataforma; cargos não
+   geram herança automática; perfis por ação e escopo. Inclui base comum e as
+   verticais previstas de Saúde, Varejo, Indústria e Serviços. Ainda sem alteração
+   dos privilégios existentes ou implementação antecipada desses módulos.
+   Primeira etapa de persistência implementada em `identity/access_models.py`:
+   proprietário por organização, perfis e atribuições com FKs compostas que impedem
+   referências entre tenants. Categorias sem herança e defaults inativos.
+   Migration `d2a6f09b84c1` validada em banco temporário, sem aplicação local nesta
+   etapa. Doze testes novos e suíte completa com 142 testes. Próximo incremento:
+   designação inicial e transferência segura de proprietário, antes das rotas de
+   gestão e da integração do catálogo de permissões.
+   Documentação essencial em `docs/autenticacao.md` e `docs/api-organizations.md`,
+   em nível intermediário de detalhe (5/10), conforme preferência do desenvolvedor.
+   Mensagens de validação do bootstrap ajustadas para indicar campo e regra sem
+   refletir dados; três testes novos validados, totalizando 130 testes no projeto.
+   Por decisão do desenvolvedor, novas senhas aceitam de 8 a 128 caracteres,
+   com mensagens e validações alinhadas no cadastro e na geração do hash.
+   Rate limit é requisito aprovado para o login: limites combinados por origem e
+   conta, resposta 429 com espera informada e validação de concorrência, proxies
+   e indisponibilidade do armazenamento antes de disponibilizar autenticação.
+   Endpoints não serão expostos sem controles
+   mínimos de identidade, vínculos e permissões, que precederão sua publicação.
 4. Aplicação de Company: contratos, validações, persistência e endpoints, em etapas
    separadas, revisando a regra de unicidade do identificador fiscal.
 5. Identidade e isolamento: estratégia de tenancy, autenticação, autorização,
@@ -287,5 +357,7 @@ alertas repetidos e testes de isolamento. As demais áreas entram conforme seus
 dados estiverem disponíveis e forem aprovadas individualmente.
 
 Esta etapa registra direção de produto; não cria agora tabelas, rotas, tarefas
-agendadas, modelos de IA ou módulos adicionais. A entrega atual é o service
-de Organization, aguardando aprovação.
+agendadas, modelos de IA ou módulos adicionais. A entrega atual é a base de
+persistência de proprietários, perfis e atribuições, validada em banco temporário.
+O próximo incremento é a designação e transferência segura de proprietário antes
+das rotas de gestão de usuários e da integração do catálogo de permissões.

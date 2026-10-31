@@ -1,33 +1,92 @@
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import timedelta
+import secrets
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import SecretStr
+from redis.asyncio import Redis
+from redis.asyncio.retry import Retry
+from redis.backoff import NoBackoff
+from starlette.responses import JSONResponse
 
+from app.api.v1.auth import router as auth_router
 from app.api.v1.health import router as health_router
-from app.core.config import get_settings
-from app.database.session import close_database_engine
+from app.core.config import Settings, get_settings
+from app.core.http_security import ProtectedApiBoundary
+from app.database.session import async_session_factory, close_database_engine
+from app.modules.identity.authentication import AuthenticationService
+from app.modules.identity.passwords import hash_password
+from app.modules.identity.rate_limit import LoginRateLimiter, LoginRateLimitPolicy
+from app.modules.organizations.router import router as organization_router
 
-settings = get_settings()
+def create_app(
+    settings: Settings | None = None, *, session_factory=None, redis_client: Redis | None = None,
+    rate_limit_namespace: str | None = None,
+) -> FastAPI:
+    """Monta a aplicação; injeções de infraestrutura permitem testes isolados."""
+
+    config = settings if settings is not None else get_settings()
+    factory = session_factory if session_factory is not None else async_session_factory
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        client = redis_client
+        try:
+            if config.auth_rate_limit_key is not None:
+                if client is None:
+                    client = Redis(
+                        host=config.redis_host, port=config.redis_port, db=config.redis_db,
+                        username=config.redis_username,
+                        password=config.redis_password.get_secret_value() if config.redis_password else None,
+                        socket_connect_timeout=2, socket_timeout=2, max_connections=20,
+                        retry=Retry(NoBackoff(), 0),
+                    )
+                limiter = LoginRateLimiter(
+                    client, key_secret=config.auth_rate_limit_key,
+                    namespace=rate_limit_namespace or f"sd-financeiro:{config.app_environment}",
+                    policy=LoginRateLimitPolicy(
+                        account_limit=config.auth_account_limit, account_window_seconds=config.auth_account_window_seconds,
+                        origin_limit=config.auth_origin_limit, origin_window_seconds=config.auth_origin_window_seconds,
+                        global_limit=config.auth_global_limit, global_window_seconds=config.auth_global_window_seconds,
+                    ),
+                )
+                dummy_hash = await hash_password(SecretStr(secrets.token_urlsafe(32)))
+                application.state.authentication = AuthenticationService(
+                    factory, limiter, dummy_hash=dummy_hash,
+                    idle_timeout=timedelta(seconds=config.auth_idle_timeout_seconds),
+                    hash_concurrency=config.auth_hash_concurrency,
+                )
+            yield
+        finally:
+            application.state.authentication = None
+            if client is not None and redis_client is None:
+                await client.aclose()
+            if session_factory is None:
+                await close_database_engine()
+
+    application = FastAPI(
+        title=config.app_name, description="API do Sistema Digital Financeiro.",
+        version=config.app_version, debug=config.app_debug, lifespan=lifespan,
+        docs_url="/docs" if config.app_environment in ("development", "test") else None,
+        redoc_url="/redoc" if config.app_environment in ("development", "test") else None,
+        openapi_url="/openapi.json" if config.app_environment in ("development", "test") else None,
+    )
+    application.state.authentication = None
+    application.state.settings = config
+    application.state.session_factory = factory
+    application.add_middleware(ProtectedApiBoundary, api_prefix=config.api_v1_prefix)
+
+    @application.exception_handler(RequestValidationError)
+    async def safe_validation_error(request: Request, error: RequestValidationError):
+        # Mensagem fixa: não serializar input, ctx, corpo ou erros que reflitam valores.
+        return JSONResponse({"detail": "Dados de entrada inválidos."}, status_code=422)
+
+    application.include_router(health_router, prefix=config.api_v1_prefix)
+    application.include_router(auth_router, prefix=config.api_v1_prefix)
+    application.include_router(organization_router, prefix=config.api_v1_prefix)
+    return application
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """Gerencia recursos compartilhados durante o ciclo da aplicação."""
-
-    yield
-
-    await close_database_engine()
-
-
-app = FastAPI(
-    title=settings.app_name,
-    description="API do Sistema Digital Financeiro.",
-    version=settings.app_version,
-    debug=settings.app_debug,
-    lifespan=lifespan,
-)
-
-app.include_router(
-    health_router,
-    prefix=settings.api_v1_prefix,
-)
+app = create_app()

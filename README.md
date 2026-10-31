@@ -4,6 +4,10 @@ Sistema de gestão empresarial brasileiro em desenvolvimento, projetado para
 integrar processos administrativos, financeiros, comerciais, operacionais e fiscais
 em uma base modular e extensível.
 
+O produto atende exclusivamente empresas. `Company` utiliza CNPJ; CPF não é um
+identificador alternativo. As contas de usuário representam as pessoas autorizadas
+a operar o sistema em nome das empresas.
+
 O produto tem como direção atuar também como parceiro virtual da empresa:
 transformar dados operacionais em indicadores e oportunidades para melhorar
 receita, margem, caixa e eficiência. O escopo é generalista, com possibilidade de
@@ -17,17 +21,25 @@ Ainda não está pronto para produção ou uso multi-tenant com dados reais.
 | Implementado | Situação |
 | --- | --- |
 | Backend FastAPI | Configuração por ambiente e ciclo de vida das conexões |
-| PostgreSQL e Redis | Infraestrutura local via Docker Compose; Redis sem uso de negócio |
+| PostgreSQL e Redis | Infraestrutura local via Docker Compose; Redis utilizado pelo limitador interno de login |
 | Health check | Verificação real de conexão com PostgreSQL |
 | Organizations e Companies | Models ORM, relacionamento, UUIDs, status e timestamps com fuso horário |
 | Alembic | Migration inicial `ed92b41e1e71` e execução assíncrona |
 | Contratos de Organization | Schemas de criação e resposta com Pydantic |
 | Persistência de Organization | Repository com criação por `flush` e busca por UUID |
 | Aplicação de Organization | Service com criação transacional e consulta |
-| Testes | 24 testes validados com `unittest`, incluindo integração com PostgreSQL |
+| Base de identidade | Models de usuários e vínculos, com permissões negadas por padrão; migration validada em banco temporário |
+| Política de acesso | Verificação de sessão, usuário ativo, vínculo e concessões nas rotas de Organization |
+| Proteção de senhas | Hash e verificação com Argon2id; credenciais separadas |
+| Autenticação HTTP | Login e logout com token opaco, inatividade e revogação |
+| Rate limit | Limites por conta, origem e geral no login, com Redis e contagem atômica |
+| Bootstrap administrativo | Comando interativo para inicialização única do primeiro operador, sem cadastro público |
+| Hierarquia organizacional | Persistência de proprietário, perfis e atribuições por tenant, sem novos privilégios automáticos; migration em revisão |
+| Testes | 142 testes validados com `unittest`, incluindo integração HTTP, PostgreSQL e Redis |
 
-Endpoints de Organization, autenticação, autorização, isolamento de acesso entre
-tenants, módulos empresariais e painel executivo ainda não estão implementados.
+Organization possui criação e consulta autenticadas com isolamento de acesso testado
+nessas rotas. Módulos empresariais, permissões por empresa e painel executivo ainda
+não estão implementados. O login exige configuração segura antes do uso.
 O frontend ainda não possui uma aplicação implementada.
 
 ## Visão do produto
@@ -77,11 +89,12 @@ necessidade concreta. Especializações por segmento não serão antecipadas no 
 | Python 3.14 | Runtime do backend |
 | FastAPI | API HTTP |
 | Pydantic e Pydantic Settings | Contratos e configurações |
+| pwdlib com Argon2 | Hash e verificação de senhas |
 | SQLAlchemy 2 Async | ORM e acesso assíncrono |
 | Psycopg 3 | Driver PostgreSQL |
 | PostgreSQL 18 | Banco relacional |
 | Alembic | Versionamento do schema |
-| Redis 8 | Infraestrutura disponível para uso futuro |
+| Redis 8 e redis-py | Contadores compartilhados do rate limit interno |
 | uv | Ambiente virtual e dependências com lockfile |
 | Docker Compose | Serviços locais |
 | unittest | Testes automatizados |
@@ -151,7 +164,7 @@ docker compose ps
 Set-Location backend
 uv sync --locked --python 3.14
 uv run alembic upgrade head
-uv run fastapi dev
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --no-proxy-headers --no-access-log
 ```
 
 Confira o banco de destino antes de aplicar migrations. A aplicação lê
@@ -170,15 +183,18 @@ Dentro de `backend`, execute os testes sem integração:
 uv run python -m unittest discover -s tests -v
 ```
 
-Os nove testes de integração de repository e service são ignorados por padrão.
-Para executar a suíte completa, com PostgreSQL local ativo na porta 5433:
+Os 73 testes PostgreSQL, oito Redis e 16 HTTP com ambas as infraestruturas são
+ignorados por padrão.
+Para executar a suíte completa, com PostgreSQL local na porta 5433 e Redis na 6379:
 
 ```powershell
 $env:SD_RUN_DATABASE_TESTS = '1'
+$env:SD_RUN_REDIS_TESTS = '1'
 try {
     uv run python -m unittest discover -s tests -v
 } finally {
     Remove-Item Env:SD_RUN_DATABASE_TESTS
+    Remove-Item Env:SD_RUN_REDIS_TESTS
 }
 ```
 
@@ -187,6 +203,10 @@ aplica as migrations e o remove ao concluir. O usuário local precisa de permiss
 para criar bancos. Os testes não utilizam o banco de negócio do ERP. Uma interrupção
 forçada pode deixar o banco temporário para limpeza posterior. Execute apenas em
 ambiente de desenvolvimento.
+
+Os testes Redis usam o banco lógico 15 e um namespace aleatório por teste. A limpeza
+remove somente as chaves próprias, sem `FLUSHDB` ou `FLUSHALL`. Senhas, e-mails e IPs
+reais não são usados nos cenários.
 
 ## Segurança
 
@@ -198,13 +218,43 @@ ambiente de desenvolvimento.
 - TLS, proteção dos dados armazenados, gestão de chaves e procedimentos de
   backup e recuperação deverão ser definidos e validados antes da produção.
 
+## Primeiro operador da plataforma
+
+Após revisar e aplicar as migrations no banco de destino, execute dentro de
+`backend`, em um terminal interativo:
+
+```powershell
+uv run python -m app.modules.identity.bootstrap_cli
+```
+
+O comando exibe o destino para conferência, exige confirmação e solicita nome,
+e-mail, senha e confirmação da senha. A senha é digitada sem exibição e não é aceita
+por argumento. Não use senha padrão ou envie credenciais pelo chat.
+
+A inicialização cria usuário ativo, hash Argon2id e marcador único na mesma
+transação. Execuções repetidas ou concorrentes são recusadas. Contas existentes
+não são promovidas automaticamente. O operador recebe apenas a permissão de
+provisionar organizações, sem vínculos de leitura ou sessão de login.
+
+Os testes criam contas somente em bancos temporários. O primeiro operador local
+foi criado pelo desenvolvedor e o login HTTP foi validado. Recuperação de acesso
+continua pendente; o bootstrap não cria operadores adicionais nem recupera contas.
+
 ## Desenvolvimento e documentação
 
 O projeto evolui em pequenos ciclos de implementação, validação, revisão e aprovação.
-A próxima entrega prevista é a interface HTTP de Organization, após revisão do service.
+A interface HTTP de Organization está implementada com autenticação e autorização.
+As migrations foram aplicadas ao banco local em `c418d69a02be (head)` e o segredo
+de autenticação foi configurado sem exibição. A API local teve health e recusas
+de acesso validados. O primeiro operador foi criado e o desenvolvedor confirmou
+login, logout e recusa de sessão revogada via Swagger em 31/10/2026.
+Auditoria e outros controles de produção seguem pendentes.
 
 - [Documentação do backend](backend/README.md)
 - [Planejamento do produto e evolução funcional](docs/planejamento.md)
+- [Contrato HTTP e política de acesso de Organization](docs/api-organizations.md)
+- [Autenticação e segurança](docs/autenticacao.md)
+- [Hierarquia, perfis e permissões por área e segmento](docs/hierarquia-e-permissoes.md)
 
 ## Licenciamento
 
