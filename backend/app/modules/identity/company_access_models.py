@@ -18,7 +18,7 @@ class CompanyPermissionGrant(Base):
         ForeignKeyConstraint(["user_id", "organization_id"],
             ["organization_memberships.user_id", "organization_memberships.organization_id"],
             ondelete="RESTRICT", name="fk_company_grants_member"),
-        CheckConstraint("permission_key = 'companies.read'", name="ck_company_grants_permission"),
+        CheckConstraint("permission_key IN ('companies.read', 'payables.read', 'payables.manage', 'payables.settle', 'payables.reverse')", name="ck_company_grants_permission"),
         CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="ck_company_grants_status"),
         CheckConstraint("revision > 0", name="ck_company_grants_revision"),
         Index("ix_company_grants_member", "organization_id", "user_id"),
@@ -41,7 +41,7 @@ class CompanyPermissionChange(Base):
             ["company_permission_grants.organization_id", "company_permission_grants.company_id",
              "company_permission_grants.user_id", "company_permission_grants.permission_key"],
             ondelete="RESTRICT", name="fk_company_permission_changes_grant"),
-        CheckConstraint("action = 'COMPANY_READ_SET'", name="ck_company_permission_changes_action"),
+        CheckConstraint("(action = 'COMPANY_READ_SET' AND permission_key = 'companies.read') OR (action = 'COMPANY_PERMISSION_SET' AND permission_key IN ('payables.read', 'payables.manage', 'payables.settle', 'payables.reverse'))", name="ck_company_permission_changes_action"),
         Index("ix_company_permission_changes_scope", "organization_id", "company_id", "created_at"),
     )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

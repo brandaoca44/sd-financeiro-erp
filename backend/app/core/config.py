@@ -1,9 +1,11 @@
 from functools import lru_cache
+import os
 from pathlib import Path
+import re
 from typing import Literal
 from urllib.parse import quote_plus
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +46,32 @@ class Settings(BaseSettings):
     auth_global_limit: int = Field(default=300, ge=1, le=1000000)
     auth_global_window_seconds: int = Field(default=60, ge=1, le=86400)
 
+    @field_validator("api_v1_prefix")
+    @classmethod
+    def validate_api_prefix(cls, value):
+        if not re.fullmatch(r"/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*", value):
+            raise ValueError("Prefixo da API inválido.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_operational_security(self):
+        if self.database_echo:
+            raise ValueError("SQL echo deve permanecer desativado.")
+        if not self.database_password.get_secret_value().strip():
+            raise ValueError("Credencial de banco ausente.")
+        if self.app_environment in ("staging", "production"):
+            if self.app_debug:
+                raise ValueError("Debug não é permitido neste ambiente.")
+            secrets_to_check = (self.database_password, self.redis_password, self.auth_rate_limit_key)
+            for secret in secrets_to_check:
+                value = secret.get_secret_value() if secret else ""
+                if (len(value.encode("utf-8")) < 32 or len(set(value)) < 2
+                        or value.lower().startswith(("change_me", "changeme", "example", "your_secret"))):
+                    raise ValueError("Configure segredos distintos e fortes para banco, Redis e autenticação.")
+            if len({secret.get_secret_value() for secret in secrets_to_check}) != 3:
+                raise ValueError("Os segredos de banco, Redis e autenticação devem ser distintos.")
+        return self
+
     @field_validator("auth_rate_limit_key", mode="before")
     @classmethod
     def validate_auth_key(cls, value):
@@ -82,4 +110,8 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Retorna uma única instância das configurações durante a execução."""
 
-    return Settings()
+    external = os.environ.get("APP_ENVIRONMENT", "development")
+    settings = Settings(_env_file=None) if external in ("staging", "production") else Settings()
+    if settings.app_environment in ("staging", "production") and external not in ("staging", "production"):
+        raise ValueError("Defina o ambiente operacional externamente, sem depender do arquivo .env.")
+    return settings

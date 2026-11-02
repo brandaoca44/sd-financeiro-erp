@@ -22,12 +22,14 @@ from app.api.v1.legacy_access import router as legacy_access_router
 from app.api.v1.company_access import router as company_access_router
 from app.core.config import Settings, get_settings
 from app.core.http_security import ProtectedApiBoundary
+from app.core.observability import SafeHttpBoundary
 from app.database.session import async_session_factory, close_database_engine
 from app.modules.identity.authentication import AuthenticationService
 from app.modules.identity.passwords import hash_password
 from app.modules.identity.rate_limit import LoginRateLimiter, LoginRateLimitPolicy
 from app.modules.organizations.router import router as organization_router
 from app.modules.organizations.company_router import router as company_router
+from app.modules.finance.router import router as payable_router
 
 def create_app(
     settings: Settings | None = None, *, session_factory=None, redis_client: Redis | None = None,
@@ -73,6 +75,12 @@ def create_app(
                         namespace=rate_limit_namespace or f"sd-financeiro:{config.app_environment}",
                         operation=operation,
                     ))
+                application.state.payables_manage_limiter = LoginRateLimiter(client,
+                    key_secret=config.auth_rate_limit_key,
+                    namespace=rate_limit_namespace or f"sd-financeiro:{config.app_environment}",
+                    operation="payables_manage", policy=LoginRateLimitPolicy(
+                        account_limit=60, account_window_seconds=60, origin_limit=180,
+                        origin_window_seconds=60, global_limit=1200, global_window_seconds=60))
                 application.state.authentication = AuthenticationService(
                     factory, limiter, dummy_hash=dummy_hash,
                     idle_timeout=timedelta(seconds=config.auth_idle_timeout_seconds),
@@ -87,6 +95,7 @@ def create_app(
             application.state.invitation_manage_limiter = None
             application.state.invitation_accept_limiter = None
             application.state.access_manage_limiter = None
+            application.state.payables_manage_limiter = None
             if client is not None and redis_client is None:
                 await client.aclose()
             if session_factory is None:
@@ -105,9 +114,11 @@ def create_app(
     application.state.invitation_manage_limiter = None
     application.state.invitation_accept_limiter = None
     application.state.access_manage_limiter = None
+    application.state.payables_manage_limiter = None
     application.state.settings = config
     application.state.session_factory = factory
     application.add_middleware(ProtectedApiBoundary, api_prefix=config.api_v1_prefix)
+    application.add_middleware(SafeHttpBoundary)
 
     @application.exception_handler(RequestValidationError)
     async def safe_validation_error(request: Request, error: RequestValidationError):
@@ -124,6 +135,7 @@ def create_app(
     application.include_router(legacy_access_router, prefix=config.api_v1_prefix)
     application.include_router(company_router, prefix=config.api_v1_prefix)
     application.include_router(company_access_router, prefix=config.api_v1_prefix)
+    application.include_router(payable_router, prefix=config.api_v1_prefix)
     return application
 
 

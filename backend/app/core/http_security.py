@@ -1,6 +1,5 @@
 """Limita corpos sensíveis e evita respostas de erro com dados internos."""
 
-from sqlalchemy.exc import SQLAlchemyError
 from starlette.responses import JSONResponse
 
 
@@ -18,12 +17,8 @@ class ProtectedApiBoundary:
         if scope["type"] != "http" or not protected:
             await self.app(scope, receive, send)
             return
-        started = False
-
         async def secure_send(message):
-            nonlocal started
             if message["type"] == "http.response.start":
-                started = True
                 headers = [(key, value) for key, value in message.get("headers", [])
                            if key.lower() not in (b"cache-control", b"pragma")]
                 message = {**message, "headers": headers + [(b"cache-control", b"no-store"), (b"pragma", b"no-cache")]}
@@ -63,11 +58,4 @@ class ProtectedApiBoundary:
             downstream_receive = bounded_receive
         else:
             downstream_receive = receive
-        try:
-            await self.app(scope, downstream_receive, secure_send)
-        except Exception as error:
-            if started:
-                raise
-            code = 503 if isinstance(error, SQLAlchemyError) else 500
-            detail = "Serviço temporariamente indisponível." if code == 503 else "Erro interno."
-            await JSONResponse({"detail": detail}, code)(scope, downstream_receive, secure_send)
+        await self.app(scope, downstream_receive, secure_send)

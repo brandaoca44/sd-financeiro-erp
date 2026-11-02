@@ -14,6 +14,20 @@ class PermissionKey(StrEnum):
     COMPANIES_READ = "companies.read"
     COMPANIES_MANAGE = "companies.manage"
     COMPANY_ACCESS_MANAGE = "companies.access.manage"
+    PAYABLES_READ = "payables.read"
+    PAYABLES_MANAGE = "payables.manage"
+    PAYABLES_SETTLE = "payables.settle"
+    PAYABLES_REVERSE = "payables.reverse"
+
+
+class FinancialPermissionKey(StrEnum):
+    READ = "payables.read"
+    MANAGE = "payables.manage"
+    SETTLE = "payables.settle"
+    REVERSE = "payables.reverse"
+
+
+FINANCIAL_PERMISSIONS = frozenset(FinancialPermissionKey)
 
 
 ROLE_PERMISSIONS = frozenset({PermissionKey.ORGANIZATION_READ, PermissionKey.ROLES_READ})
@@ -36,6 +50,13 @@ PERMISSION_CATALOG = (
      "scope": "COMPANY", "grant_source": "OWNER_OR_COMPANY_GRANT"},
     {"key": PermissionKey.COMPANIES_MANAGE, "description": "Cadastrar e atualizar empresas do tenant",
      "scope": "ORGANIZATION", "grant_source": "OWNER"},
-    {"key": PermissionKey.COMPANY_ACCESS_MANAGE, "description": "Conceder ou revogar leitura de uma empresa para um vínculo",
+    {"key": PermissionKey.COMPANY_ACCESS_MANAGE, "description": "Administrar concessões conhecidas por empresa para um vínculo",
      "scope": "COMPANY", "grant_source": "OWNER"},
 )
+PERMISSION_CATALOG += tuple({"key": key, "description": description,
+    "scope": "COMPANY", "grant_source": "OWNER_OR_COMPANY_GRANT"} for key, description in (
+    (PermissionKey.PAYABLES_READ, "Consultar títulos de contas a pagar"),
+    (PermissionKey.PAYABLES_MANAGE, "Criar, editar e cancelar títulos de contas a pagar"),
+    (PermissionKey.PAYABLES_SETTLE, "Registrar baixa manual de contas a pagar"),
+    (PermissionKey.PAYABLES_REVERSE, "Estornar baixa de contas a pagar"),
+))

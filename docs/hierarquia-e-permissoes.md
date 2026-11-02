@@ -1,7 +1,7 @@
 # Hierarquia, perfis e permissões
 
 Status: persistência, serviço e rotas de designação/transferência implementados.
-Migrations aplicadas ao PostgreSQL local do ERP, porta 5433, em `e96b2130ad74`.
+Migrations aplicadas ao PostgreSQL local do ERP, porta 5433, em `a18d5320cf97`.
 Não há proprietários ou perfis atribuídos automaticamente ou alteração das concessões existentes.
 A política exige usuário/vínculo ativos e concessão válida. O [catálogo e a gestão
 de perfis](perfis-e-permissoes.md) integram perfis à leitura, preservando flags antigas.

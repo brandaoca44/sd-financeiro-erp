@@ -12,7 +12,7 @@ from app.modules.identity.access_models import (
 from app.modules.identity.permission_models import (
     OrganizationAccessDelegation, OrganizationDelegationPermission, OrganizationRolePermission,
 )
-from app.modules.identity.permissions import PermissionKey
+from app.modules.identity.permissions import PermissionKey, FINANCIAL_PERMISSIONS
 from app.modules.organizations.models import Organization, OrganizationStatus
 
 from app.modules.identity.models import (
@@ -78,6 +78,9 @@ class OrganizationAccessPolicy:
         try:
             key = PermissionKey(permission_key)
         except (ValueError, TypeError):
+            return False
+        # Permissões financeiras exigem uma empresa, inclusive para o Master.
+        if key in FINANCIAL_PERMISSIONS:
             return False
         if key == PermissionKey.ORGANIZATION_READ:
             return await self.can_read_organization(user_id, organization_id)

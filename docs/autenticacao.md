@@ -115,7 +115,9 @@ local do ERP: autenticação inicialmente em `c418d69a02be`; hierarquia e histó
 posteriormente em `e7b1c90a42d3`, convites em `f3a82c17d905` e perfis/permissões em
 `a81e73c405bf`, ciclo de vínculos em `b92f8d06e4a1` e revisão de leitura em
 `c74e901a6bd2`, cadastro de empresas em `d85fa1049ce3` e concessões por empresa em
-`e96b2130ad74 (head)`, sem diferenças pendentes de schema.
+`e96b2130ad74`; a fundação financeira está em `f07c4219be86` e suas permissões em
+`a18d5320cf97 (head)`, sem diferenças
+pendentes de schema.
 O segredo foi gerado diretamente em `backend/.env`, sem exibição ou versionamento.
 O primeiro operador foi criado pelo desenvolvedor no comando interativo, sem
 compartilhar senha ou token no chat.
@@ -137,9 +139,14 @@ permissões ao token. Revisões e origem da autoridade são conferidas no servid
 versão, credenciais ou descrição da infraestrutura. `/docs`, `/redoc` e OpenAPI ficam
 desabilitados em staging/production. Isso não substitui autorização das rotas.
 
-Permissões por empresa, auditoria completa, recuperação de conta, troca de senha,
+Permissões operacionais dos módulos futuros, auditoria completa, recuperação de conta, troca de senha,
 revogação de todas as sessões e frontend ainda não foram entregues. A base não deve
 ser tratada como pronta para produção somente porque o login está implementado.
+
+Leitura de cadastros por empresa já exige concessão específica. A proteção global
+de erros, o identificador de requisição e as regras de segredos estão descritos em
+[erros, logs e segredos](erros-logs-e-segredos.md). Para execução local, usar o
+launcher `uv run python -m ops.serve --reload`, que aplica o formato seguro de logs.
 
 Referências: [autenticação da OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
 e [sessões da OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).

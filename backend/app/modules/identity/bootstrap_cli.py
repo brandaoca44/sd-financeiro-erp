@@ -10,7 +10,7 @@ import warnings
 from pydantic import SecretStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.modules.identity.bootstrap import (
     BootstrapAccountConflictError,
     BootstrapAlreadyInitializedError,
@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         print("É necessário um terminal interativo com entrada de senha oculta.", file=sys.stderr)
         return 2
     try:
-        settings = Settings()
+        settings = get_settings()
         print(f"Destino: {settings.database_host}:{settings.database_port} / {settings.database_name}")
         if input("Digite CRIAR para inicializar o primeiro operador neste banco: ").strip() != "CRIAR":
             print("Operação cancelada.")

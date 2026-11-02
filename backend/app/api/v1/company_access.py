@@ -9,7 +9,8 @@ from app.api.v1.auth import get_current_session, get_session_token, record_autho
 from app.api.v1.roles import guarded_access
 from app.modules.identity.access_security import AccessManagementDeniedError
 from app.modules.identity.company_access import CompanyGrantService
-from app.modules.identity.company_access_schemas import CompanyReadGrantRequest, CompanyReadGrantResponse
+from app.modules.identity.company_access_schemas import CompanyReadGrantRequest, CompanyReadGrantResponse, CompanyFinancialGrantRequest, CompanyFinancialGrantResponse
+from app.modules.identity.permissions import FinancialPermissionKey
 from app.modules.identity.sessions import AuthenticatedSession
 
 router = APIRouter(tags=["Acesso por empresa"])
@@ -34,3 +35,23 @@ async def set_company_grant(organization_id: UUID, company_id: UUID, user_id: UU
 ):
     async with guarded_access(request, current.user_id, service_class=CompanyGrantService) as service:
         return await service.set_read(organization_id, company_id, user_id, data, token=token)
+
+
+@router.get("/organizations/{organization_id}/companies/{company_id}/members/{user_id}/permissions/{permission_key}", response_model=CompanyFinancialGrantResponse | None)
+async def read_financial_grant(organization_id: UUID, company_id: UUID, user_id: UUID, permission_key: FinancialPermissionKey, request: Request,
+    current: AuthenticatedSession = Depends(get_current_session), token: SecretStr = Depends(get_session_token)):
+    try:
+        async with request.app.state.session_factory() as reader:
+            result = await CompanyGrantService(reader).read(organization_id, company_id, user_id, current.user_id, permission_key=permission_key)
+    except AccessManagementDeniedError:
+        raise HTTPException(404, "Operação de acesso não permitida.") from None
+    await record_authorized_activity(request, token)
+    return result
+
+
+@router.put("/organizations/{organization_id}/companies/{company_id}/members/{user_id}/permissions/{permission_key}", response_model=CompanyFinancialGrantResponse)
+async def set_financial_grant(organization_id: UUID, company_id: UUID, user_id: UUID, permission_key: FinancialPermissionKey,
+    data: CompanyFinancialGrantRequest, request: Request,
+    current: AuthenticatedSession = Depends(get_current_session), token: SecretStr = Depends(get_session_token)):
+    async with guarded_access(request, current.user_id, service_class=CompanyGrantService) as service:
+        return await service.set_read(organization_id, company_id, user_id, data, token=token, permission_key=permission_key)

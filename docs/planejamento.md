@@ -297,9 +297,47 @@ apropriado.
    reais. Health 200 e rotas protegidas com resposta 401 sem sessão.
 6. Base operacional: auditoria, erros e logs seguros, segredos por ambiente,
    backup e restauração, validações automatizadas.
+   Primeira entrega: backup lógico cifrado e ensaio em contêiner PostgreSQL
+   descartável, sem rede/portas e sem sobrescrever a base atual. Autenticação do
+   arquivo antes da restauração, conferência de migration/schema e leitura das
+   tabelas. Limite inicial de 128 MiB comprimidos. Não inclui agendamento,
+   retenção externa, PITR ou substituição do banco em incidente. Procedimento em
+   `docs/backup-e-recuperacao.md`.
+   Validação completa: 380 testes aprovados, incluindo 17 novos. Recuperação de
+   registro sintético conferida, origem preservada e contêineres de ensaio removidos.
+   Próxima entrega operacional implementada: boundary global de erros, IDs gerados
+   pelo servidor e logs por campos permitidos; launcher local seguro. SQL echo
+   bloqueado e segredos obrigatórios/distintos em staging/produção, sem leitura de
+   .env pelo carregador operacional. Contrato em `docs/erros-logs-e-segredos.md`.
+   Validação: 399 testes aprovados, incluindo 19 novos; API local pelo launcher
+   com health 200, recusa 401 sem sessão e headers de correlação e não armazenamento.
 7. Definição e entrega do MVP: selecionar os fluxos necessários de cadastros,
    financeiro, comercial, estoque, compras, fiscal e relatórios. Cada módulo terá
    escopo e aprovação próprios.
+   Primeiro recorte detalhado: contas a pagar, com lançamento, consulta, baixa
+   manual e estorno. Ordem de implementação, autorizações planejadas, critérios
+   de aceite e bloqueios de produção em `docs/prontidao-e-primeiro-mvp.md`.
+   Contratos, models de título/movimentos/histórico e repository interno entregues,
+   com migration `f07c4219be86`, sem rotas ou concessões financeiras. Valores exatos
+   em Decimal/NUMERIC com CHECKs, isolamento por FKs compostas e criação/histórico
+   na mesma transação. Contrato em `docs/persistencia-contas-a-pagar.md`.
+   Validação: 413 testes aprovados, 14 novos. Migration aplicada à porta 5433,
+   contagens anteriores preservadas, tabelas financeiras vazias e schema alinhado.
+   Autorização financeira implementada: `payables.read`, `payables.manage`,
+   `payables.settle` e `payables.reverse` independentes por empresa. Gestão pelo
+   Master, com reautenticação, revisões, rate limit e histórico; nenhuma concessão
+   criada automaticamente. Migration `a18d5320cf97`; contratos de títulos ainda
+   não publicados. Documento: `docs/permissoes-financeiras.md`.
+   Validação: 437 testes aprovados, 24 novos; migration aplicada à porta 5433,
+   concessões e contagens anteriores preservadas, sem concessões financeiras reais
+   e sem bancos temporários. API local: health 200 e GET/PUT sem sessão 401.
+   Serviços e rotas de títulos implementados: criar, consultar, listar, editar e
+   cancelar, com concessões independentes de leitura/gestão. Sessão e autoridade
+   revalidadas na transação, revisão otimista e histórico atômico; respostas de
+   escrita mínimas. Rate limit próprio para operação financeira. Não inclui baixas
+   ou estornos. Contrato em `docs/api-contas-a-pagar.md`; sem migration nova.
+   Validação: 452 testes aprovados, 15 novos; health local 200 e GET/POST sem
+   sessão 401. Nenhum título real criado e nenhum banco temporário restante.
 8. Integrações concretas exigidas pelo MVP, com contratos e adapters próprios.
 9. Homologação e produção: fluxos completos, segurança, recuperação de falhas,
    implantação e monitoramento.
@@ -448,5 +486,11 @@ implementados. Ativação/desativação de vínculos e proteção do Master tamb
 implementadas. A revisão explícita das concessões antigas também está implementada,
 com conversão restrita e revogação auditadas. O cadastro básico de Company/CNPJ
 está implementado. A leitura de cadastros por colaboradores já exige concessão
-explícita por empresa. O próximo incremento é a base operacional, começando por
-backup/restauração e validação da recuperação, antes dos módulos empresariais.
+explícita por empresa. A primeira entrega de backup cifrado e ensaio de recuperação
+está implementada. Erros e logs seguros estão padronizados, com revisão da política
+de segredos por ambiente. O checklist de prontidão e o primeiro fluxo do MVP estão
+detalhados em `docs/prontidao-e-primeiro-mvp.md`. A fundação de persistência de contas
+a pagar, autorização por empresa e rotas de títulos estão implementadas. O próximo
+incremento é baixa e estorno, com saldo, idempotência e concorrência. As pendências de recuperação em
+produção estão registradas em `docs/backup-e-recuperacao.md`, antes dos módulos
+empresariais.

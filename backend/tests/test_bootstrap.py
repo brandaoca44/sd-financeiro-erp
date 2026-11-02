@@ -67,7 +67,7 @@ class BootstrapCliTests(unittest.TestCase):
         settings = Settings(_env_file=None, database_password="senha_ficticia")
         creator = create or AsyncMock(return_value=uuid4())
         with patch.object(bootstrap_cli.sys.stdin, "isatty", return_value=interactive), \
-             patch.object(bootstrap_cli, "Settings", return_value=settings), \
+             patch.object(bootstrap_cli, "get_settings", return_value=settings), \
              patch("builtins.input", side_effect=answers or ["CRIAR", "Operador", "operador@example.com"]), \
              patch.object(bootstrap_cli.getpass, "getpass", side_effect=passwords or ["senha ficticia longa", "senha ficticia longa"]), \
              patch.object(bootstrap_cli, "_create_operator", creator), \

@@ -93,7 +93,7 @@ class LoginRateLimiter:
             raise ValueError("Namespace de rate limit inválido.")
         if policy is not None and not isinstance(policy, LoginRateLimitPolicy):
             raise ValueError("Política de rate limit inválida.")
-        if operation not in ("login", "ownership", "invitation_manage", "invitation_accept", "access_manage"):
+        if operation not in ("login", "ownership", "invitation_manage", "invitation_accept", "access_manage", "payables_manage"):
             raise ValueError("Operação de rate limit inválida.")
         self._client = client
         self._key_secret = key_secret

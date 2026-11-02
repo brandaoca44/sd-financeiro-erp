@@ -20,7 +20,7 @@ Dentro de `backend`, após conferir o banco de destino:
 ```powershell
 uv sync --locked --python 3.14
 uv run alembic upgrade head
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --no-proxy-headers --no-access-log
+uv run python -m ops.serve --reload
 ```
 
 PostgreSQL utiliza `127.0.0.1:5433`; Redis, `127.0.0.1:6379`. As portas publicadas
@@ -89,7 +89,7 @@ Ele confirma o destino e solicita nome, e-mail e senha oculta. Cria usuário ati
 hash e marcador único na mesma transação, sem acesso automático a tenants.
 Não cria conta padrão, não promove contas existentes e não emite sessão.
 
-As migrations foram aplicadas ao banco local, na revisão `e96b2130ad74 (head)`.
+As migrations foram aplicadas ao banco local, na revisão `a18d5320cf97 (head)`.
 O segredo do rate limit foi gerado no `.env`, sem exibição. A API local foi validada
 com health 200 e recusa de acessos sem sessão. O operador foi criado e o desenvolvedor
 confirmou login 200, logout 204 e recusa do token revogado 401 via Swagger em
@@ -124,14 +124,34 @@ criadas contas, organizações ou convites reais nesta validação.
 
 ## Testes
 
-Última validação completa: 363 testes aprovados. Acesso por empresa adicionou 31
+Validação da entrega de acesso por empresa: 363 testes aprovados, incluindo 31
 testes de autorização, paginação, ciclo de vida, concorrência, auditoria e migrations.
 Migration aplicada à porta 5433, com dados/flags/status/revisões/contagens anteriores
 preservados e schema alinhado. Nenhuma concessão real foi criada. API local com
 health 200, GET/PUT de concessão no OpenAPI e recusa 401 sem sessão. Sucesso com
 credenciais foi validado em infraestrutura isolada, sem acesso a dados reais.
 
-Testes sem infraestrutura externa:
+Validação da entrega de backup: **380 testes aprovados**, incluindo 17 novos de backup
+(15 de formato/segurança e dois de recuperação real em contêiner descartável).
+O PostgreSQL local permaneceu saudável e não restaram contêineres de ensaio.
+
+Validação da entrega de erros e logs: **399 testes aprovados**, incluindo 19 novos de erros,
+logs e configuração operacional. API local pelo launcher seguro: health 200 e
+rota de organização sem sessão 401, ambas com `X-Request-ID` e `no-store`.
+
+Validação da fundação financeira: **413 testes aprovados**, incluindo 14 novos da fundação
+financeira. Migration `f07c4219be86` aplicada na porta 5433, contagens anteriores
+preservadas, schema alinhado e tabelas financeiras vazias. Sem bancos temporários.
+
+Validação de permissões financeiras: **437 testes aprovados**, incluindo 24 novos de permissões
+financeiras. Migration `a18d5320cf97` aplicada à porta 5433, contagens e concessões
+anteriores preservadas, schema alinhado, nenhuma concessão financeira real criada.
+
+Validação mais recente: **452 testes aprovados**, incluindo 15 novos de HTTP
+financeiro. API local: health 200, leitura/escrita de títulos sem sessão 401.
+Sem migration nova; nenhum título, movimento ou histórico financeiro real criado.
+
+Comando sem infraestrutura externa:
 
 ```powershell
 uv run python -m unittest discover -s tests -v
@@ -142,17 +162,39 @@ Suíte completa, com PostgreSQL e Redis locais ativos:
 ```powershell
 $env:SD_RUN_DATABASE_TESTS = '1'
 $env:SD_RUN_REDIS_TESTS = '1'
+$env:SD_RUN_BACKUP_TESTS = '1'
 try {
     uv run python -m unittest discover -s tests -v
 } finally {
     Remove-Item Env:SD_RUN_DATABASE_TESTS
     Remove-Item Env:SD_RUN_REDIS_TESTS
+    Remove-Item Env:SD_RUN_BACKUP_TESTS
 }
 ```
 
 PostgreSQL: banco temporário `sd_repository_test_<uuid>`, com migrations e remoção
 ao final. Redis: banco lógico 15 e namespace exclusivo por cenário, sem flush global.
 Uma interrupção forçada pode exigir limpeza posterior. Não executar em produção.
+Os testes de backup também usam contêineres descartáveis sem rede ou portas,
+removidos ao terminar, e exigem acesso ao Docker.
+
+## Contas a pagar
+
+O módulo `finance` tem contratos, persistência e rotas protegidas de lançamento,
+consulta, edição e cancelamento, descritas na [API de títulos](../docs/api-contas-a-pagar.md).
+A administração de concessões e a política financeira por
+empresa estão implementadas; contrato em
+[permissões financeiras](../docs/permissoes-financeiras.md). Regras e limites em
+[fundação de contas a pagar](../docs/persistencia-contas-a-pagar.md).
+
+## Backup e ensaio de recuperação
+
+`uv run python -m ops.postgres_backup create CAMINHO.sdfbackup` cria um arquivo
+cifrado do PostgreSQL local. `verify CAMINHO.sdfbackup` ensaia sua recuperação em
+contêiner separado, sem substituir o banco existente. A senha é interativa e não
+deve ser compartilhada. Limite inicial: dump comprimido de 128 MiB.
+Procedimento, limitações e pendências em
+[backup e recuperação](../docs/backup-e-recuperacao.md).
 
 ## Proteção dos dados e documentação
 
@@ -161,5 +203,6 @@ Não versionar `.env`, credenciais ou dados reais. Manter `APP_DEBUG=false` e
 senhas ou tokens; os parâmetros SQL da conexão oficial ficam ocultos nos logs.
 
 - [Autenticação, segurança e configuração](../docs/autenticacao.md)
+- [Erros, logs e segredos por ambiente](../docs/erros-logs-e-segredos.md)
 - [Contrato e permissões de Organization](../docs/api-organizations.md)
 - [Planejamento do produto](../docs/planejamento.md)

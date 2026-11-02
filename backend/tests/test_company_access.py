@@ -52,7 +52,7 @@ class CompanyGrantSchemaTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("SD_RUN_DATABASE_TESTS") == "1" and os.environ.get("SD_RUN_REDIS_TESTS") == "1",
                      "Defina SD_RUN_DATABASE_TESTS=1 e SD_RUN_REDIS_TESTS=1.")
-class CompanyGrantHttpTests(DatabaseTestCase):
+class CompanyGrantHttpFixture(DatabaseTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self.redis = Redis(host="127.0.0.1", port=6379, db=15, socket_timeout=2, socket_connect_timeout=2)
@@ -128,6 +128,7 @@ class CompanyGrantHttpTests(DatabaseTestCase):
         return await self.client.put(self.base+f"/members/{self.member.id}/status",headers=self.headers[self.owner.id],
             json={"status":status,"expected_revision":revision,"password":self.password})
 
+class CompanyGrantHttpTests(CompanyGrantHttpFixture):
     async def test_no_implicit_company_access_from_tenant_read_or_platform_flag(self):
         self.assertEqual((await self._get()).status_code,404)
         for user in (self.member,self.operator):

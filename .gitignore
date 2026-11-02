@@ -43,3 +43,9 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+
+# Backups locais contêm dados sensíveis, mesmo cifrados
+backups/
+*.sdfbackup
+*.sdfbackup.partial
+*.dump

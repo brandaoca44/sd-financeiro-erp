@@ -11,6 +11,8 @@ próprias e não são concedidas por essa autorização.
 O catálogo identifica `companies.read` como escopo `COMPANY`, com origem
 `OWNER_OR_COMPANY_GRANT`. `companies.access.manage` é exclusiva do Master.
 `companies.manage` continua exclusiva do Master para criação/edição de cadastros.
+As [permissões financeiras](permissoes-financeiras.md) têm chaves e rotas próprias;
+o contrato `read-access` deste documento não concede essas operações.
 Essas chaves não podem entrar nos perfis ou tetos de delegação organizacionais.
 
 A concessão combina organização, empresa, vínculo e chave conhecida. Não há

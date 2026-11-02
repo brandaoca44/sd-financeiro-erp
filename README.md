@@ -41,10 +41,14 @@ Ainda não está pronto para produção ou uso multi-tenant com dados reais.
 | Revisão de acessos | Origem da leitura, conversão explícita da flag antiga em perfil restrito e revogação auditada |
 | Empresas | Cadastro jurídico por tenant, CNPJ numérico/alfanumérico, nomes e status interno; administração inicial pelo Master |
 | Acesso por empresa | Leitura explícita do cadastro para colaboradores, filtragem antes da paginação e revogação no ciclo de vida |
-| Testes | 363 testes validados com `unittest`, incluindo integração HTTP, PostgreSQL e Redis |
+| Backup local | Arquivo cifrado e ensaio de restauração em PostgreSQL descartável, sem substituir a base existente |
+| Erros e logs | Proteção global, identificador de requisição, logs por campos permitidos e política de segredos por ambiente |
+| Contas a pagar | API protegida de lançamento, consulta, edição e cancelamento; baixas e estornos pendentes |
+| Permissões financeiras | Quatro concessões independentes por empresa, administração pelo Master e revogação no ciclo de vida |
+| Testes | 452 testes validados com `unittest`, incluindo integração HTTP, PostgreSQL, Redis e recuperação de backup |
 
 Organization possui criação e consulta autenticadas com isolamento de acesso testado
-nessas rotas. Módulos empresariais, permissões por empresa e painel executivo ainda
+nessas rotas. Módulos empresariais, permissões operacionais por módulo e painel executivo ainda
 não estão implementados. O login exige configuração segura antes do uso.
 O frontend ainda não possui uma aplicação implementada.
 
@@ -170,7 +174,7 @@ docker compose ps
 Set-Location backend
 uv sync --locked --python 3.14
 uv run alembic upgrade head
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --no-proxy-headers --no-access-log
+uv run python -m ops.serve --reload
 ```
 
 Confira o banco de destino antes de aplicar migrations. A aplicação lê
@@ -250,7 +254,7 @@ continua pendente; o bootstrap não cria operadores adicionais nem recupera cont
 
 O projeto evolui em pequenos ciclos de implementação, validação, revisão e aprovação.
 A interface HTTP de Organization está implementada com autenticação e autorização.
-As migrations foram aplicadas ao banco local em `e96b2130ad74 (head)` e o segredo
+As migrations foram aplicadas ao banco local em `a18d5320cf97 (head)` e o segredo
 de autenticação foi configurado sem exibição. A API local teve health e recusas
 de acesso validados. O primeiro operador foi criado e o desenvolvedor confirmou
 login, logout e recusa de sessão revogada via Swagger em 31/10/2026.
@@ -268,6 +272,12 @@ controles de produção seguem pendentes.
 - [Revisão e conversão das concessões antigas](docs/revisao-de-acessos.md)
 - [Cadastro jurídico de empresas](docs/api-companies.md)
 - [Permissões específicas por empresa](docs/acesso-por-empresa.md)
+- [Backup local e ensaio de recuperação](docs/backup-e-recuperacao.md)
+- [Erros, logs e segredos por ambiente](docs/erros-logs-e-segredos.md)
+- [Prontidão operacional e primeiro fluxo do MVP](docs/prontidao-e-primeiro-mvp.md)
+- [Fundação de contas a pagar](docs/persistencia-contas-a-pagar.md)
+- [Permissões financeiras por empresa](docs/permissoes-financeiras.md)
+- [API de títulos de contas a pagar](docs/api-contas-a-pagar.md)
 - [Hierarquia, perfis e permissões por área e segmento](docs/hierarquia-e-permissoes.md)
 
 ## Licenciamento
