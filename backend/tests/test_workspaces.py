@@ -4,6 +4,10 @@ from test_company_access import CompanyGrantHttpFixture
 
 
 class WorkspaceHttpTests(CompanyGrantHttpFixture):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        await self.enable_business_contracts()
+
     async def contexts(self, user=None, **params):
         return await self.client.get("/api/v1/auth/workspaces",headers=self.headers[user or self.member.id],params=params)
 

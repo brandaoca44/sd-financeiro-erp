@@ -9,3 +9,242 @@
 .plans-hero{padding-top:56px;padding-bottom:88px}.catalog-notice{padding:15px 20px}.catalog-notice strong{font-size:14px}.catalog-notice p{font-size:13px;color:#536d87}.plan-card h2{font-size:30px}.plan-label,.embedded .plan-label{font-size:10px;letter-spacing:1px;color:#536d87}.plan-description{font-size:14px;line-height:1.65;color:#4e657d;margin-bottom:19px}.plan-limits{font-size:12px;color:#526c86}.plan-limits strong{font-size:14px}.plan-card ul{margin:22px 0;gap:12px}.plan-card li{font-size:13px;color:#415c77;line-height:1.5}.compare-button{font-size:13px;min-height:46px}.security-baseline h2{font-size:14px}.security-baseline p{font-size:12px;color:#526c86}.segment-note{font-size:11px;color:#526c86}.comparison-heading{cursor:pointer;list-style:none}.comparison-heading::-webkit-details-marker{display:none}.comparison-heading p{font-size:13px;color:#536d87}.comparison-chevron{font-size:24px;color:#4a6f96}.comparison-panel[open] .comparison-chevron{transform:rotate(45deg)}.comparison-scroll thead th,.comparison-scroll tbody th,.comparison-scroll td{font-size:12px}.comparison-scroll tbody th small{font-size:10px;color:#58718b}.availability{font-size:10px;color:#526a83}.availability.ready{color:#285e4b}.plans-footer{font-size:11px}
 .plan-detail{border:1px solid #d6e3ef;border-radius:12px;width:min(620px,calc(100% - 28px));max-height:calc(100dvh - 32px);padding:28px;color:#183754;background:#fff;box-shadow:0 20px 70px #07182b55;overflow:auto}.plan-detail::backdrop{background:#08192b9c}.detail-heading{display:flex;justify-content:space-between;align-items:start;gap:16px}.detail-heading .section-label{font-size:10px;color:#57738f}.detail-heading h2{font-size:29px;color:#183754}.detail-close{background:#eef3f8;color:#315472;border-radius:6px;min-width:42px;min-height:42px;font-size:23px;line-height:1}.detail-close:hover{background:#dce8f4}.detail-intro{font-size:14px;color:#526a83;margin:12px 0 15px}.detail-limits{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;font-size:13px;color:#395670;margin-bottom:13px}.detail-limits strong:not(:first-child){margin-left:15px}.detail-note{font-size:12px;color:#536d87;margin-bottom:18px}.detail-groups{display:grid;gap:9px}.detail-groups details{border:1px solid #dce6ef;border-radius:6px}.detail-groups summary{padding:13px 15px;cursor:pointer;font-size:14px;color:#2d4d6a;font-weight:600}.detail-groups summary>span{float:right;font-size:11px;font-weight:400;color:#58718b}.detail-groups ul{list-style:none;padding:0 15px 8px;margin:0}.detail-groups li{display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #edf2f6;padding:11px 0;font-size:13px;line-height:1.5;color:#425f79}.detail-groups .availability{flex-shrink:0}
 @media(max-width:760px){.plans-hero{padding-top:40px;padding-bottom:78px}.plan-description{min-height:0}.catalog-notice p{font-size:12px}.plan-card li{font-size:14px}.comparison-heading{display:flex}.comparison-heading h2{font-size:19px}.plan-detail{padding:20px}.detail-heading h2{font-size:25px}.plans-footer{font-size:10px}}
+
+/* Console de exploração */
+.plans-hero {
+  padding-block: clamp(52px, 8vw, 104px) clamp(90px, 10vw, 142px);
+}
+
+.plans-hero::after {
+  background: linear-gradient(100deg, #061423f5 0%, #081c2de0 48%, #09243b42 100%);
+}
+
+.plans-hero h1 {
+  max-width: 720px;
+  font-size: clamp(36px, 5.5vw, 72px);
+  letter-spacing: -.055em;
+  font-weight: 580;
+}
+
+.hero-label {
+  border-color: #75dbd66b;
+  color: #a6f3eb;
+  background: #102c3c;
+}
+
+.plan-console {
+  background: radial-gradient(ellipse at top right, #173c4b, transparent 65%), #0d2031;
+  color: #f4fbff;
+  border: 1px solid #345363;
+  border-radius: 14px;
+  padding: clamp(20px, 4vw, 34px);
+  margin-bottom: 24px;
+  box-shadow: 0 16px 40px #071a2925;
+}
+
+.console-heading > span,
+.console-profile > span {
+  color: #a4e7df;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+
+.console-heading h2 {
+  margin: 8px 0 22px;
+  font-size: clamp(22px, 3vw, 30px);
+}
+
+.console-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.console-options button,
+.console-detail {
+  min-height: 46px;
+  border: 1px solid #527486;
+  border-radius: 8px;
+  background: #152e40;
+  color: #f3faff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.console-options button[aria-pressed="true"] {
+  color: #082c31;
+  background: #a4e7df;
+  border-color: #a4e7df;
+  font-weight: 700;
+}
+
+.console-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px 28px;
+  padding-top: 24px;
+}
+
+.console-profile h3 {
+  margin: 6px 0;
+  font-size: 28px;
+}
+
+.console-profile p {
+  margin: 0;
+  color: #c4d8e5;
+  font-size: 14px;
+}
+
+.console-limits {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+}
+
+.console-limits div {
+  padding: 10px 14px;
+  border-left: 1px solid #527486;
+}
+
+.console-limits dt {
+  color: #c4d8e5;
+  font-size: 12px;
+}
+
+.console-limits dd {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.console-detail {
+  justify-self: start;
+  padding: 0 15px;
+}
+
+.console-detail:hover {
+  background: #23475b;
+}
+
+.plan-console button:focus-visible {
+  outline: 2px solid #b9fff6;
+  outline-offset: 3px;
+}
+
+.plan-card {
+  border-top: 2px solid #7393a9;
+}
+
+.plan-card.professional {
+  border-top-color: #27847f;
+}
+
+@media (max-width: 760px) {
+  .console-result {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .console-options button {
+    font-size: 11px;
+  }
+
+  .console-detail {
+    width: 100%;
+  }
+}
+
+.plans-page .plans-hero {
+  padding-block: 28px 58px;
+}
+
+.plans-page .plans-hero h1 {
+  margin: 10px 0 0;
+  font-size: clamp(28px, 3vw, 42px);
+}
+
+.console-heading h2 {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 760px) {
+  .plans-page .plans-hero {
+    padding-block: 20px 49px;
+  }
+
+  .console-heading h2 {
+    margin-bottom: 12px;
+  }
+}
+
+.console-highlights {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-left: 20px;
+  color: #c4d8e5;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.console-scope {
+  grid-column: 1 / -1;
+  border-top: 1px solid #527486;
+  padding-top: 14px;
+}
+
+.console-scope h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.console-scope .console-detail {
+  margin-top: 12px;
+}
+
+.comparison-scroll table {
+  min-width: 580px;
+}
+
+.comparison-scroll caption {
+  padding: 12px 18px;
+  text-align: left;
+  color: #425f79;
+  font-size: 14px;
+}
+
+.comparison-scroll thead th,
+.comparison-scroll tbody th,
+.comparison-scroll td {
+  font-size: 14px;
+  line-height: 1.45;
+  color: #324d67;
+}
+
+.comparison-scroll .comparison-group th {
+  background: #e8f0f7;
+  color: #183754;
+  font-weight: 700;
+}
+
+.comparison-scroll th .availability {
+  display: table;
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+.comparison-scroll .current-plan {
+  background: #eaf6f3;
+}
+
+.comparison-scroll .included {
+  color: #245e50;
+  font-weight: 650;
+}
+
+.comparison-scroll:focus-visible {
+  outline: 2px solid #27847f;
+  outline-offset: -2px;
+}

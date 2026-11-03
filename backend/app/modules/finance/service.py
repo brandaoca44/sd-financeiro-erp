@@ -47,7 +47,10 @@ class PayableService:
             Company.id == company_id).with_for_update())
         if actor is None or member is None or company is None:
             self.deny()
-        if not await CompanyAccessPolicy(self.session).has_financial_permission(actor_id, organization_id, company_id, permission_key):
+        policy = CompanyAccessPolicy(self.session)
+        if not await policy.lock_financial_contract(organization_id, company_id):
+            self.deny()
+        if not await policy.has_financial_permission(actor_id, organization_id, company_id, permission_key):
             self.deny()
         login = await self.session.scalar(select(UserSession).where(UserSession.token_hash == token_hash).with_for_update())
         now = datetime.now(timezone.utc)

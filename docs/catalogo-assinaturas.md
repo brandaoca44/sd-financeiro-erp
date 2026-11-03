@@ -22,12 +22,9 @@ incluindo segmento, vigência, empresa habilitada, recurso disponível e permiss
 explícito para cada capacidade avaliada. Os motivos da decisão são internos e não devem
 revelar ao cliente a existência de recursos ou contratos de outro tenant.
 
-Este incremento não cria tabelas de assinatura nem altera a autorização em produção.
-As rotas financeiras continuam com os controles por empresa e operação já existentes.
-Para ativar licenciamento, persistir contratos, habilitações e auditoria; carregar snapshots
-do servidor e aplicar a política em todas as rotas, exports e jobs pertinentes, com transações
-e revalidação de capacidade para escritas. Nenhum tenant foi migrado automaticamente.
-Cobrança e aceites de documentos revisados permanecem etapas posteriores.
+A persistência e a autorização comercial de contas a pagar estão descritas em
+[Contratos Empresarial](contratos-empresarial.md). A cobrança e os aceites
+de documentos revisados seguem como etapas posteriores.
 
 ## Imagem da página
 

@@ -35,6 +35,7 @@ class FinancialPermissionSchemaTests(unittest.TestCase):
 class FinancialPermissionHttpTests(CompanyGrantHttpFixture):
     async def asyncSetUp(self):
         await super().asyncSetUp()
+        await self.enable_business_contracts()
         self.original_limiter = self.app.state.access_manage_limiter
         self._wide_limit()
 

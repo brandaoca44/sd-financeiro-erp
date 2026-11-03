@@ -2,8 +2,10 @@
 
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 
+from app.modules.commercial.catalog import CATALOG_VERSION, FEATURES, PLANS, Feature
+from app.modules.commercial.models import BusinessCompanyActivation, BusinessContract
 from app.modules.identity.access_models import OrganizationOwnership
 from app.modules.identity.authorization import OrganizationAccessPolicy
 from app.modules.identity.company_access_models import CompanyPermissionGrant
@@ -62,6 +64,37 @@ class CompanyAccessPolicy:
         with self.session.no_autoflush:
             return (await self.session.scalar(select(query.exists()))) is True
 
+    @staticmethod
+    def _licensed_company(organization_id, permission_key):
+        feature = FEATURES[Feature.PAYABLES]
+        plans = [key.value for key, plan in PLANS.items() if feature.key in plan.features]
+        if not feature.available or permission_key not in feature.permissions:
+            plans = []
+        return select(BusinessCompanyActivation.company_id).join(
+            BusinessContract, BusinessContract.organization_id == BusinessCompanyActivation.organization_id,
+        ).where(
+            BusinessCompanyActivation.organization_id == organization_id,
+            BusinessCompanyActivation.company_id == Company.id,
+            BusinessContract.catalog_version == CATALOG_VERSION,
+            BusinessContract.plan.in_(plans),
+            BusinessContract.status == "ACTIVE",
+            BusinessContract.valid_from <= func.statement_timestamp(),
+            BusinessContract.valid_until > func.statement_timestamp(),
+        ).correlate(Company).exists()
+
+    async def lock_financial_contract(self, organization_id, company_id):
+        contract_id = await self.session.scalar(select(BusinessContract.organization_id).where(
+            BusinessContract.organization_id == organization_id,
+        ).with_for_update(read=True))
+        if contract_id is None:
+            return False
+        activation_id = await self.session.scalar(select(BusinessCompanyActivation.company_id).where(
+            BusinessCompanyActivation.organization_id == organization_id,
+            BusinessCompanyActivation.company_id == company_id,
+        ).with_for_update(read=True))
+
+        return activation_id is not None
+
     def financial_visibility(self, user_id, organization_id, permission_key, *, grant_only=False):
         if not isinstance(permission_key, str) or permission_key not in FINANCIAL_PERMISSIONS:
             from sqlalchemy import false
@@ -70,6 +103,7 @@ class CompanyAccessPolicy:
             OrganizationOwnership.organization_id == organization_id, OrganizationOwnership.user_id == user_id).exists()
         grant = self._direct_grant(user_id, organization_id, permission_key)
         return and_(Company.organization_id == organization_id, Company.status == CompanyStatus.ACTIVE,
+            self._licensed_company(organization_id, permission_key),
             self._active_actor(user_id, organization_id), grant if grant_only else or_(owner, grant))
 
     async def has_financial_permission(self, user_id, organization_id, company_id, permission_key, *, grant_only=False):

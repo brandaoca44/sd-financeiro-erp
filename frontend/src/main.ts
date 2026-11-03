@@ -15,6 +15,7 @@ const routes: Routes = [
   {path:'plans',loadComponent:()=>import('./app/features/subscription/subscription').then(m=>m.SubscriptionPage)},
   {path: 'finance', canActivate: [authGuard], loadComponent: () => import('./app/features/finance/shell').then(m => m.FinanceShell), children: [
     {path: 'overview', loadComponent: () => import('./app/features/finance/overview').then(m => m.Overview)},
+    {path: 'expenses', loadComponent: () => import('./app/features/finance/expenses').then(m => m.Expenses)},
     {path: 'payables', canDeactivate:[(component:{canLeave:()=>boolean})=>component.canLeave()], loadComponent: () => import('./app/features/finance/payables').then(m => m.Payables)},
     {path:'subscription',data:{embedded:true},loadComponent:()=>import('./app/features/subscription/subscription').then(m=>m.SubscriptionPage)},
     {path:'security',loadComponent:()=>import('./app/features/auth/security').then(m=>m.AccountSecurityPage)},

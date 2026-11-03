@@ -20,6 +20,7 @@ from app.modules.identity.sessions import SessionService
 class PayableHttpFixture(CompanyGrantHttpFixture):
     async def asyncSetUp(self):
         await super().asyncSetUp()
+        await self.enable_business_contracts()
         self._wide_limit()
 
     def path(self, title=None, company=None, org=None):
@@ -55,6 +56,72 @@ class PayableHttpFixture(CompanyGrantHttpFixture):
         return await self.client.get(self.path(title, company, org), headers=self.headers[actor or self.owner.id])
 
 class PayableHttpTests(PayableHttpFixture):
+    async def test_expense_replay_creates_one_payable(self):
+        url = self.path().removesuffix("/payables") + "/expenses"
+        owner = self.headers[self.owner.id]
+        headers = {**owner, "Idempotency-Key": str(uuid4())}
+        data = self.data(category="INTERNET", supplier="Fornecedor de teste",
+                         document_type="BOLETO", document_reference="TESTE")
+        created = await self.client.post(url, headers=headers, json=data)
+        self.assertEqual(created.status_code, 201, created.text)
+        replay = await self.client.post(url, headers=headers, json=data)
+        self.assertEqual(replay.status_code, 201, replay.text)
+        self.assertEqual(created.json(), replay.json())
+        listed = await self.client.get(url, headers=owner)
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(len(listed.json()), 1)
+        self.assertEqual(listed.json()[0]["category"], "INTERNET")
+        titles = await self.client.get(self.path(), headers=owner)
+        self.assertEqual(titles.status_code, 200, titles.text)
+        async with self.app.state.session_factory() as session:
+            count = await session.scalar(select(func.count()).select_from(Payable).where(
+                Payable.company_id == self.a.id))
+            self.assertEqual(count, 1)
+
+    async def test_contract_expiry_blocks_master_reads_writes_and_workspace(self):
+        from sqlalchemy import text
+
+        title = await self.title_id()
+        async with self.factory.begin() as writer:
+            await writer.execute(text("""
+                UPDATE business_contracts
+                SET valid_from = statement_timestamp() - interval '2 days',
+                    valid_until = statement_timestamp() - interval '1 day'
+                WHERE organization_id = :organization_id
+            """), {"organization_id": self.org.id})
+
+        self.assertEqual((await self.get(title)).status_code, 404)
+        self.assertEqual((await self.create()).status_code, 404)
+        response = await self.client.get("/api/v1/auth/workspaces", headers=self.headers[self.owner.id])
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(str(self.org.id), {item["organization_id"] for item in response.json()["items"]})
+
+    async def test_company_without_activation_is_denied(self):
+        from sqlalchemy import text
+
+        async with self.factory.begin() as writer:
+            await writer.execute(text("DELETE FROM business_company_activations WHERE company_id = :company_id"),
+                                 {"company_id": self.a.id})
+        self.assertEqual((await self.create()).status_code, 404)
+
+    async def test_admin_reconfiguration_rejects_foreign_company_and_replaces_scope(self):
+        from datetime import datetime, timedelta, timezone
+
+        from app.modules.commercial.catalog import Plan
+        from ops.configure_business_contract import configure
+
+        now = datetime.now(timezone.utc)
+        with self.assertRaises(ValueError):
+            async with self.factory.begin() as writer:
+                await configure(writer, self.org.id, Plan.ESSENTIAL, now, now + timedelta(days=1),
+                                [self.foreign.id])
+
+        self.assertEqual((await self.create(company=self.b)).status_code, 201)
+        async with self.factory.begin() as writer:
+            await configure(writer, self.org.id, Plan.ESSENTIAL, now, now + timedelta(days=1), [self.a.id])
+        self.assertEqual((await self.create(company=self.a)).status_code, 201)
+        self.assertEqual((await self.create(company=self.b)).status_code, 404)
+
     async def test_owner_full_title_flow(self):
         response = await self.create(amount="0.10")
         self.assertEqual(response.status_code, 201)

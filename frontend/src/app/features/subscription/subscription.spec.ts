@@ -23,7 +23,7 @@ describe('Página de assinatura',()=>{
     const http=setup(),fixture=TestBed.createComponent(SubscriptionPage);
     http.expectOne('/api/v1/catalog/plans').flush(catalog);await fixture.whenStable();fixture.detectChanges();
     const root=fixture.nativeElement as HTMLElement;
-    expect(root.querySelectorAll('.plan-card').length).toBe(3);
+    expect(root.querySelectorAll('.console-options button').length).toBe(3);
     expect(root.textContent).toContain('Contratação em preparação');
     expect(root.textContent).toContain('Implementado');expect(root.textContent).toContain('Planejado');
     expect(root.textContent).toContain('Valores e contratação ainda não estão disponíveis');
@@ -59,6 +59,6 @@ describe('Página de assinatura',()=>{
     expect(fixture.componentInstance.catalog()).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Não foi possível carregar os planos');
     expect(fixture.nativeElement.textContent).not.toContain('privado');
-    expect(fixture.nativeElement.querySelectorAll('.plan-card').length).toBe(0);
+    expect(fixture.nativeElement.querySelectorAll('.console-options button').length).toBe(0);
   });
 });

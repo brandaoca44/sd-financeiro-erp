@@ -96,6 +96,24 @@ class CompanyGrantHttpFixture(DatabaseTestCase):
             self.headers[user.id] = {"Authorization":"Bearer "+issued.token.get_secret_value()}
         self.base = f"/api/v1/organizations/{self.org.id}"
 
+    async def enable_business_contracts(self):
+        from datetime import datetime, timedelta, timezone
+        from app.modules.commercial.catalog import CATALOG_VERSION
+        from app.modules.commercial.models import BusinessCompanyActivation, BusinessContract
+
+        now = datetime.now(timezone.utc)
+        self.session.add_all([
+            BusinessContract(organization_id=org.id, plan="PROFESSIONAL", catalog_version=CATALOG_VERSION,
+                status="ACTIVE", valid_from=now - timedelta(days=1), valid_until=now + timedelta(days=1))
+            for org in (self.org, self.other)
+        ])
+        await self.session.flush()
+        self.session.add_all([
+            BusinessCompanyActivation(organization_id=company.organization_id, company_id=company.id)
+            for company in (self.a, self.b, self.d, self.foreign)
+        ])
+        await self.session.commit()
+
     async def _clear_redis(self):
         keys = [key async for key in self.redis.scan_iter(match="{"+self.namespace+":*")]
         if keys:
