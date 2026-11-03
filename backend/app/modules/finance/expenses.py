@@ -1,6 +1,6 @@
 """Registro de despesas e geração transacional da obrigação financeira."""
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, StringConstraints
@@ -18,6 +18,28 @@ from app.modules.identity.permissions import PermissionKey
 from app.modules.organizations.models import Company
 
 
+SupplierName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
+
+
+class Supplier(Base):
+    __tablename__ = "finance_suppliers"
+    __table_args__ = (scope_company("fk_finance_suppliers_company"),)
+    organization_id = mapped_column(Uuid, primary_key=True)
+    company_id = mapped_column(Uuid, primary_key=True)
+    id = mapped_column(Uuid, primary_key=True)
+    name = mapped_column(String(150), nullable=False)
+
+
+class SupplierCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: SupplierName
+
+
+class SupplierOption(SupplierCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
 class Expense(Base):
     __tablename__ = "expenses"
     __table_args__ = (
@@ -28,6 +50,11 @@ class Expense(Base):
             ["payables.organization_id", "payables.company_id", "payables.id"],
             ondelete="RESTRICT", name="fk_expenses_payable",
         ),
+        ForeignKeyConstraint(
+            ["organization_id", "company_id", "supplier_id"],
+            ["finance_suppliers.organization_id", "finance_suppliers.company_id", "finance_suppliers.id"],
+            ondelete="RESTRICT", name="fk_expenses_supplier",
+        ),
         UniqueConstraint("payable_id", name="uq_expenses_payable"),
     )
     organization_id = mapped_column(Uuid, primary_key=True)
@@ -37,6 +64,7 @@ class Expense(Base):
     payable_id = mapped_column(Uuid, nullable=True)
     description = mapped_column(String(300), nullable=False)
     category = mapped_column(String(20), nullable=False)
+    supplier_id = mapped_column(Uuid, nullable=True)
     supplier = mapped_column(String(150), nullable=False)
     document_type = mapped_column(String(20), nullable=True)
     document_reference = mapped_column(String(100), nullable=True)
@@ -49,7 +77,8 @@ class ExpenseCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     description: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
     category: Literal["INTERNET", "ENERGIA", "AGUA", "ESGOTO", "ALUGUEL", "PESSOAL", "OUTROS"]
-    supplier: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
+    supplier: SupplierName | None = None
+    supplier_id: UUID | None = None
     document_type: Literal["BOLETO", "NOTA_FISCAL", "OUTRO"] | None = None
     document_reference: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)] | None = None
     amount: Money
@@ -72,6 +101,11 @@ class ExpenseService(PayableService):
         async with self.session.begin():
             actor = await self._authorize_write(organization_id, company_id, token)
             values = data.model_dump()
+            if data.supplier_id is not None:
+                supplier = await self.session.get(Supplier, (organization_id, company_id, data.supplier_id))
+                if supplier is None:
+                    self.deny()
+                values["supplier"] = supplier.name
             previous = await self.session.get(Expense, (organization_id, company_id, request_id))
             if previous:
                 if previous.created_by_user_id != actor or any(
@@ -100,6 +134,8 @@ async def register_expense(organization_id: UUID, company_id: UUID, data: Expens
                            current=Depends(get_current_session), token=Depends(get_session_token)):
     if data.due_date is not None and data.due_date < data.issue_date:
         raise HTTPException(422, "O vencimento deve ser igual ou posterior à emissão.")
+    if (data.supplier_id is None) == (data.supplier is None):
+        raise HTTPException(422, "Informe um fornecedor.")
     if data.document_reference and not data.document_type:
         raise HTTPException(422, "Selecione o tipo de documento.")
     async with writer(request, current.user_id, service_class=ExpenseService) as service:
@@ -121,5 +157,48 @@ async def list_expenses(organization_id: UUID, company_id: UUID, request: Reques
             Expense.organization_id == organization_id, Expense.company_id == company_id, visible_company,
         ).order_by(Expense.issue_date.desc(), Expense.id.desc()).limit(100))
         result = [ExpenseResponse.model_validate(row) for row in rows]
+    await record_authorized_activity(request, token)
+    return result
+
+
+supplier_router = APIRouter(
+    prefix="/organizations/{organization_id}/companies/{company_id}/suppliers",
+    tags=["Fornecedores"],
+)
+
+
+@supplier_router.post("", response_model=SupplierOption, status_code=201)
+async def create_supplier(organization_id: UUID, company_id: UUID, data: SupplierCreate, request: Request,
+                          current=Depends(get_current_session), token=Depends(get_session_token)):
+    async with writer(request, current.user_id) as service:
+        async with service.session.begin():
+            await service._authorize_write(organization_id, company_id, token)
+            existing = await service.session.scalar(select(Supplier).where(
+                Supplier.organization_id == organization_id, Supplier.company_id == company_id,
+                Supplier.name == data.name,
+            ))
+            if existing is not None:
+                return SupplierOption.model_validate(existing)
+            supplier = Supplier(organization_id=organization_id, company_id=company_id, id=uuid4(), name=data.name)
+            service.session.add(supplier)
+            await service.session.flush()
+            return SupplierOption.model_validate(supplier)
+
+
+@supplier_router.get("", response_model=list[SupplierOption])
+async def list_suppliers(organization_id: UUID, company_id: UUID, request: Request,
+                         current=Depends(get_current_session), token=Depends(get_session_token)):
+    async with request.app.state.session_factory() as session:
+        policy = CompanyAccessPolicy(session)
+        visible = select(Company.id).where(
+            Company.id == company_id, Company.organization_id == organization_id,
+            policy.financial_visibility(current.user_id, organization_id, PermissionKey.PAYABLES_MANAGE),
+        ).exists()
+        if not await session.scalar(select(visible)):
+            raise HTTPException(404, "Operação financeira não permitida.")
+        rows = await session.scalars(select(Supplier).where(
+            Supplier.organization_id == organization_id, Supplier.company_id == company_id, visible,
+        ).order_by(Supplier.name, Supplier.id))
+        result = [SupplierOption.model_validate(row) for row in rows]
     await record_authorized_activity(request, token)
     return result

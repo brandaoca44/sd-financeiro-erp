@@ -21,3 +21,9 @@ Contas a pagar e a lista de empresas do financeiro exigem contrato ativo e
 vigente, habilitação da empresa e permissão do usuário para a operação.
 As escritas bloqueiam o contrato e a habilitação durante a transação.
 A gestão por interface, cobrança e reserva de cotas seguem como etapas próprias.
+
+## Fornecedores e despesas
+
+Em **Financeiro → Despesas**, quem pode gerenciar títulos pode cadastrar um fornecedor
+pelo nome e selecioná-lo em novas despesas. O vínculo é restrito à empresa selecionada.
+As despesas antigas continuam exibindo o nome registrado originalmente.

@@ -34,6 +34,17 @@ interface Expense {
     @if (error()) { <p role="alert">{{error()}}</p> }
     @if (workspaces.can('payables.manage')) {
       <section class="panel detail-panel">
+        <details>
+          <summary>Cadastrar fornecedor</summary>
+          <form [formGroup]="supplierForm" (ngSubmit)="createSupplier()">
+            <label>Nome do fornecedor<input formControlName="name" maxlength="150"></label>
+            <button class="primary" type="submit" [disabled]="supplierForm.invalid || savingSupplier()">
+              Salvar fornecedor
+            </button>
+          </form>
+        </details>
+      </section>
+      <section class="panel detail-panel">
         <h2>Nova despesa</h2>
         <form [formGroup]="form" (ngSubmit)="save()">
           <fieldset [disabled]="saving() || pending !== null">
@@ -46,7 +57,12 @@ interface Expense {
                   <option [value]="category[0]">{{category[1]}}</option>
                 }
               </select></label>
-              <label>Fornecedor<input formControlName="supplier" maxlength="150"></label>
+              <label>Fornecedor<select formControlName="supplier_id">
+                <option value="">Selecione um fornecedor</option>
+                @for (supplier of suppliers(); track supplier.id) {
+                  <option [value]="supplier.id">{{supplier.name}}</option>
+                }
+              </select></label>
               <label>Tipo de documento<select formControlName="document_type">
                 <option value="">Sem documento</option><option value="BOLETO">Boleto</option>
                 <option value="NOTA_FISCAL">Nota fiscal</option><option value="OUTRO">Outro documento</option>
@@ -105,10 +121,15 @@ export class Expenses {
   private listRequest = 0;
   pending: {url: string; key: string; body: unknown} | null = null;
 
+  readonly suppliers = signal<{id: string; name: string}[]>([]);
+  readonly savingSupplier = signal(false);
+  readonly supplierForm = inject(FormBuilder).nonNullable.group({name: ['', Validators.required]});
+  private supplierRequest = 0;
+
   readonly form = inject(FormBuilder).nonNullable.group({
     description: ['', Validators.required],
     category: ['', Validators.required],
-    supplier: ['', Validators.required],
+    supplier_id: ['', Validators.required],
     document_type: [''],
     document_reference: [''],
     amount: ['', [Validators.required, Validators.pattern(/^(?:0|[1-9]\d*)(?:[.,]\d{1,2})?$/)]],
@@ -121,6 +142,9 @@ export class Expenses {
       const company = this.workspaces.selected();
       untracked(() => {
         this.form.reset({issue_date: today()});
+        this.supplierForm.reset();
+        this.suppliers.set([]);
+        void this.loadSuppliers(company && this.workspaces.can('payables.manage') ? this.supplierUrl(company) : null);
         this.error.set('');
         this.message.set('');
         void this.load(company && this.workspaces.can('payables.read') ? this.url(company) : null);
@@ -130,6 +154,44 @@ export class Expenses {
 
   private url(company: NonNullable<ReturnType<Workspaces['selected']>>): string {
     return this.api.base(company).replace(/\/payables$/, '/expenses');
+  }
+
+  private supplierUrl(company: NonNullable<ReturnType<Workspaces['selected']>>): string {
+    return this.api.base(company).replace(/\/payables$/, '/suppliers');
+  }
+
+  private async loadSuppliers(url: string | null): Promise<void> {
+    const request = ++this.supplierRequest;
+    if (!url) return;
+    try {
+      const suppliers = await firstValueFrom(this.http.get<{id: string; name: string}[]>(url).pipe(timeout(15000)));
+      if (request === this.supplierRequest) this.suppliers.set(suppliers);
+    } catch {
+      if (request === this.supplierRequest) this.error.set('Não foi possível consultar os fornecedores.');
+    }
+  }
+
+  async createSupplier(): Promise<void> {
+    const company = this.workspaces.selected();
+    const name = this.supplierForm.getRawValue().name.trim();
+    if (!company || !name || this.savingSupplier() || !this.workspaces.can('payables.manage')) return;
+    const url = this.supplierUrl(company);
+    this.savingSupplier.set(true);
+    this.error.set('');
+    try {
+      const supplier = await firstValueFrom(this.http.post<{id: string; name: string}>(url, {name}).pipe(timeout(15000)));
+      if (this.workspaces.selected()?.company_id === company.company_id) {
+        this.supplierForm.reset();
+        this.form.controls.supplier_id.setValue(supplier.id);
+        await this.loadSuppliers(url);
+      }
+    } catch {
+      if (this.workspaces.selected()?.company_id === company.company_id) {
+        this.error.set('Não foi possível cadastrar o fornecedor.');
+      }
+    } finally {
+      this.savingSupplier.set(false);
+    }
   }
 
   label(category: string): string {

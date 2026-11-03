@@ -56,6 +56,23 @@ class PayableHttpFixture(CompanyGrantHttpFixture):
         return await self.client.get(self.path(title, company, org), headers=self.headers[actor or self.owner.id])
 
 class PayableHttpTests(PayableHttpFixture):
+    async def test_expense_supplier_is_scoped_to_company(self):
+        owner = self.headers[self.owner.id]
+        base = self.path().removesuffix("/payables")
+        response = await self.client.post(base + "/suppliers", headers=owner, json={"name": "Fornecedor A"})
+        self.assertEqual(response.status_code, 201, response.text)
+        supplier_id = response.json()["id"]
+        payload = self.data(category="INTERNET", supplier_id=supplier_id)
+        headers = {**owner, "Idempotency-Key": str(uuid4())}
+        response = await self.client.post(base + "/expenses", headers=headers, json=payload)
+        self.assertEqual(response.status_code, 201, response.text)
+        listed = await self.client.get(base + "/expenses", headers=owner)
+        self.assertEqual(listed.json()[0]["supplier"], "Fornecedor A")
+        self.assertEqual(listed.json()[0]["supplier_id"], supplier_id)
+        foreign = self.path(company=self.b).removesuffix("/payables")
+        response = await self.client.post(foreign + "/expenses", headers=headers, json=payload)
+        self.assertEqual(response.status_code, 404, response.text)
+
     async def test_expense_replay_creates_one_payable(self):
         url = self.path().removesuffix("/payables") + "/expenses"
         owner = self.headers[self.owner.id]
