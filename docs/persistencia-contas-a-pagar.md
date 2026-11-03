@@ -38,25 +38,24 @@ Get e list exigem tenant e empresa, filtrados antes da paginação. Get fora do
 escopo retorna ausência. List tem limite de 100 itens e cursor por UUID.
 
 Criar título inclui histórico `CREATED`, com revisão, valor, moeda, datas e estado,
-sem duplicar descrição. O repository faz `flush`, sem `commit`; o serviço futuro
-deve delimitar a transação e desfazê-la integralmente em falha. Histórico contém
-dados financeiros sensíveis e também exigirá autorização para leitura.
+sem duplicar descrição. O repository faz `flush`, sem `commit`; os serviços
+delimitam a transação e a desfazem integralmente em falha. Histórico contém
+dados financeiros sensíveis e exige autorização para leitura.
 
 As FKs são RESTRICT; histórico existente impede remover o título referenciado.
 Isso não torna os registros imutáveis contra SQL privilegiado. A existência de
 vínculo do ator não substitui validar atividade e permissão no serviço.
 
-Estado cadastral é `OPEN` ou `CANCELLED`. Pago e parcialmente pago serão posições
-derivadas dos movimentos, sem adicionar um saldo mutável agora. Ainda não há
-comandos de edição/cancelamento nem comparação de revisão em escrita.
+Estado cadastral é `OPEN` ou `CANCELLED`. Pago e parcialmente pago são posições
+derivadas dos movimentos, sem adicionar um saldo mutável. Os serviços de títulos
+já validam revisão nas alterações e cancelamentos.
 
-## Movimentos ainda não operacionais
+## Movimentos e evolução
 
 A estrutura admite `PAYMENT` e `REVERSAL`, recusa valor inválido, origem de outro
-título/empresa e segundo estorno da mesma origem. Ela não é um serviço de baixa.
-Ainda faltam bloqueio transacional do título, limite de saldo, validação do tipo
-e valor da origem, datas, idempotência e histórico dessas operações. CHECKs por
-linha não validam a soma dos movimentos. Não inserir movimentos manualmente no
+título/empresa e segundo estorno da mesma origem. Os [serviços de baixa e estorno](baixas-e-estornos.md)
+agora validam saldo, origem, datas e idempotência sob lock, com histórico atômico.
+CHECKs por linha não substituem esses serviços. Não inserir movimentos manualmente no
 banco real nem disponibilizar essas tabelas diretamente ao frontend.
 
 ## Migration e validação
@@ -80,6 +79,6 @@ vazias. Nenhum banco temporário restou; não foram criados títulos reais.
 
 As [permissões financeiras por empresa](permissoes-financeiras.md) já foram
 implementadas. Os [serviços de títulos](api-contas-a-pagar.md) também estão disponíveis.
-Próximo incremento: baixa/estorno com
-concorrência e idempotência. O fluxo está em
+Baixa/estorno com concorrência e idempotência também foram entregues. O próximo
+incremento é posição consolidada por empresa/período. O fluxo está em
 [prontidão e MVP](prontidao-e-primeiro-mvp.md).

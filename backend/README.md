@@ -89,7 +89,7 @@ Ele confirma o destino e solicita nome, e-mail e senha oculta. Cria usuário ati
 hash e marcador único na mesma transação, sem acesso automático a tenants.
 Não cria conta padrão, não promove contas existentes e não emite sessão.
 
-As migrations foram aplicadas ao banco local, na revisão `a18d5320cf97 (head)`.
+As migrations foram aplicadas ao banco local, na revisão `b29e6431da08 (head)`.
 O segredo do rate limit foi gerado no `.env`, sem exibição. A API local foi validada
 com health 200 e recusa de acessos sem sessão. O operador foi criado e o desenvolvedor
 confirmou login 200, logout 204 e recusa do token revogado 401 via Swagger em
@@ -147,9 +147,18 @@ Validação de permissões financeiras: **437 testes aprovados**, incluindo 24 n
 financeiras. Migration `a18d5320cf97` aplicada à porta 5433, contagens e concessões
 anteriores preservadas, schema alinhado, nenhuma concessão financeira real criada.
 
-Validação mais recente: **452 testes aprovados**, incluindo 15 novos de HTTP
+Validação de títulos: **452 testes aprovados**, incluindo 15 novos de HTTP
 financeiro. API local: health 200, leitura/escrita de títulos sem sessão 401.
 Sem migration nova; nenhum título, movimento ou histórico financeiro real criado.
+
+Validação de baixas/estornos: **477 testes aprovados**, 25 novos de baixas/estornos.
+Migration `b29e6431da08` aplicada à porta 5433, contagens preservadas e schema
+alinhado. Zero movimentos/resultados idempotentes reais e bancos temporários.
+
+Validação mais recente: **495 testes aprovados**, 18 novos de resumo financeiro.
+Totais exatos e série diária conferidos em infraestrutura isolada. Sem migration
+nova; nenhuma escrita financeira real. API local: health 200, resumo no OpenAPI
+e recusa 401 sem sessão com `no-store`.
 
 Comando sem infraestrutura externa:
 
@@ -187,6 +196,14 @@ empresa estão implementadas; contrato em
 [permissões financeiras](../docs/permissoes-financeiras.md). Regras e limites em
 [fundação de contas a pagar](../docs/persistencia-contas-a-pagar.md).
 
+Baixas manuais, estornos, posição individual e consulta de movimentos estão
+disponíveis com permissões próprias, saldo exato e idempotência no PostgreSQL.
+Contrato em [baixas e estornos](../docs/baixas-e-estornos.md).
+
+O [resumo por empresa/período](../docs/resumo-contas-a-pagar.md) fornece saldos
+atuais, vencimentos, atividade do período e série diária para a interface. Exige
+leitura financeira; não representa caixa ou fechamento histórico.
+
 ## Backup e ensaio de recuperação
 
 `uv run python -m ops.postgres_backup create CAMINHO.sdfbackup` cria um arquivo
@@ -206,3 +223,5 @@ senhas ou tokens; os parâmetros SQL da conexão oficial ficam ocultos nos logs.
 - [Erros, logs e segredos por ambiente](../docs/erros-logs-e-segredos.md)
 - [Contrato e permissões de Organization](../docs/api-organizations.md)
 - [Planejamento do produto](../docs/planejamento.md)
+
+O ciclo de identidade agora inclui cadastro preparado com CPF cifrado, confirmação, recuperação e MFA TOTP. O envio de e-mail permanece desativado por decisão de produto. Requisitos, limites e variáveis estão em [Ciclo de conta](../docs/ciclo-de-conta.md). Migration atual: `c30f7542eb19`. Validação deste incremento: 515 testes do backend aprovados em infraestrutura isolada.

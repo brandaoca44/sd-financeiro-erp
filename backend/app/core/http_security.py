@@ -25,7 +25,7 @@ class ProtectedApiBoundary:
             await send(message)
 
         # Todas as escritas de organização e os corpos de credenciais são limitados.
-        bounded_path = path.startswith(self.prefix + "/organizations") or path.rstrip("/") in (
+        bounded_path = path.startswith(self.prefix + "/organizations") or (path.startswith(self.prefix + "/auth/") and path.rstrip("/") != self.prefix + "/auth/logout") or path.rstrip("/") in (
             self.prefix + "/auth/login", self.prefix + "/auth/invitations/accept",
         )
         if bounded_path and scope.get("method") in ("POST", "PUT", "PATCH"):

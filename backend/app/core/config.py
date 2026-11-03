@@ -7,6 +7,7 @@ from urllib.parse import quote_plus
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from cryptography.fernet import Fernet
 
 
 class Settings(BaseSettings):
@@ -38,6 +39,8 @@ class Settings(BaseSettings):
     redis_password: SecretStr | None = None
     auth_rate_limit_key: SecretStr | None = Field(default=None, repr=False)
     auth_idle_timeout_seconds: int = Field(default=1800, ge=1, le=86400)
+    auth_mfa_encryption_key: SecretStr | None = Field(default=None, repr=False)
+    auth_identity_encryption_key: SecretStr | None = Field(default=None, repr=False)
     auth_hash_concurrency: int = Field(default=2, ge=1, le=16)
     auth_account_limit: int = Field(default=5, ge=1, le=1000000)
     auth_account_window_seconds: int = Field(default=900, ge=1, le=86400)
@@ -55,6 +58,22 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_operational_security(self):
+        if self.auth_identity_encryption_key is not None:
+            try:
+                Fernet(self.auth_identity_encryption_key.get_secret_value().encode("ascii"))
+            except (ValueError, UnicodeError):
+                raise ValueError("Configure uma chave Fernet válida para identidade.") from None
+            if any(secret and secret.get_secret_value() == self.auth_identity_encryption_key.get_secret_value()
+                   for secret in (self.auth_mfa_encryption_key, self.auth_rate_limit_key, self.database_password, self.redis_password)):
+                raise ValueError("A chave de identidade deve ser exclusiva.")
+        if self.auth_mfa_encryption_key is not None:
+            try:
+                Fernet(self.auth_mfa_encryption_key.get_secret_value().encode("ascii"))
+            except (ValueError, UnicodeError):
+                raise ValueError("Configure uma chave Fernet válida para MFA.") from None
+            if any(secret and secret.get_secret_value() == self.auth_mfa_encryption_key.get_secret_value()
+                   for secret in (self.auth_rate_limit_key, self.database_password, self.redis_password)):
+                raise ValueError("A chave de MFA deve ser exclusiva.")
         if self.database_echo:
             raise ValueError("SQL echo deve permanecer desativado.")
         if not self.database_password.get_secret_value().strip():

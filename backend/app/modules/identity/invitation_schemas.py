@@ -5,6 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, SecretStr, StringConstraints, field_validator
+from app.modules.identity.account_security import RegisterRequest
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
 
@@ -38,6 +39,12 @@ class AcceptInvitationRequest(SecureInput):
     token: SecretStr = Field(min_length=43, max_length=43)
     password: SecretStr = Field(min_length=8, max_length=128)
     name: Name | None = None
+    cpf: SecretStr | None = Field(default=None, min_length=11, max_length=14)
+
+    @field_validator("cpf")
+    @classmethod
+    def validate_cpf(cls, value):
+        return RegisterRequest.cpf_valid(value) if value is not None else None
 
     @field_validator("token")
     @classmethod

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+from cryptography.fernet import Fernet
 import httpx
 from pydantic import SecretStr, ValidationError
 from redis.asyncio import Redis
@@ -62,7 +63,8 @@ class InvitationHttpTests(DatabaseTestCase):
         self.namespace = "sd-financeiro:test:" + uuid4().hex
         self.addAsyncCleanup(self._clear_redis)
         config = Settings(_env_file=None, database_password="ficticia", app_environment="test", app_debug=True,
-                          auth_rate_limit_key=SecretStr(secrets.token_urlsafe(32)))
+                          auth_rate_limit_key=SecretStr(secrets.token_urlsafe(32)),
+                          auth_identity_encryption_key=SecretStr(Fernet.generate_key().decode()))
         self.config = config
         self.factory = async_sessionmaker(self.engine, expire_on_commit=False, autoflush=False)
         self.app = create_app(config, session_factory=self.factory, redis_client=self.redis, rate_limit_namespace=self.namespace)
@@ -113,8 +115,12 @@ class InvitationHttpTests(DatabaseTestCase):
         return result.json()
 
     async def _accept(self, issued, **changes):
+        digits = str(secrets.randbelow(900000000) + 100000000)
+        for size in (9, 10):
+            check = (sum(int(digits[i]) * (size + 1 - i) for i in range(size)) * 10) % 11
+            digits += str(0 if check == 10 else check)
         return await self.client.post("/api/v1/auth/invitations/accept", json={
-            "token": issued["invitation_token"], "password": self.password, "name": "Pessoa convidada", **changes})
+            "token": issued["invitation_token"], "password": self.password, "name": "Pessoa convidada", "cpf": digits, **changes})
 
     async def _revoke(self, issued, *, actor=None, org=None):
         return await self.client.post(f"/api/v1/organizations/{org or issued['organization_id']}/invitations/{issued['invitation_id']}/revoke",
@@ -438,22 +444,6 @@ class InvitationHttpTests(DatabaseTestCase):
                     token_hash="a"*64, issued_by_user_id=self.owner.id, expires_at=datetime.now(timezone.utc)+timedelta(days=1)))
                 await self.session.flush()
 
-    async def test_migration_round_trip_preserves_identity_ownership_and_matches_metadata(self):
-        await self._issue()
-        await self.session.close()
-        await self.engine.dispose()
-        try:
-            await asyncio.to_thread(self.run_migration, "downgrade", "e7b1c90a42d3")
-            self.assertIsNotNone(await self.session.get(User, self.owner.id))
-            self.assertEqual(await self.session.scalar(select(OrganizationOwnership.user_id).where(
-                OrganizationOwnership.organization_id == self.org.id)), self.owner.id)
-        finally:
-            await self.session.close()
-            await self.engine.dispose()
-            await asyncio.to_thread(self.run_migration, "upgrade", "head")
-        await self.session.close()
-        await asyncio.to_thread(self.run_migration, "check")
-
     async def test_concurrent_invitations_for_same_email_across_tenants_create_one_identity(self):
         self.session.add(OrganizationMembership(user_id=self.owner.id, organization_id=self.other.id,
                                                status=MembershipStatus.ACTIVE))
@@ -497,3 +487,27 @@ class InvitationHttpTests(DatabaseTestCase):
                 await self.session.execute(update(OrganizationInvitation).where(
                     OrganizationInvitation.id == issued["invitation_id"]).values(
                         accepted_at=datetime.now(timezone.utc), accepted_by_user_id=self.existing.id))
+
+
+class InvitationMigrationTests(DatabaseTestCase):
+    async def test_migration_round_trip_preserves_identity_ownership_and_matches_metadata(self):
+        self.owner=User(name="Responsável teste",email=uuid4().hex+"@example.com",status=UserStatus.ACTIVE)
+        self.org=Organization(name="Empresa teste")
+        self.session.add_all([self.owner,self.org]);await self.session.flush()
+        self.session.add(OrganizationMembership(user_id=self.owner.id,organization_id=self.org.id,status=MembershipStatus.ACTIVE))
+        await self.session.flush()
+        self.session.add(OrganizationOwnership(organization_id=self.org.id,user_id=self.owner.id))
+        await self.session.commit()
+        await self.session.close()
+        await self.engine.dispose()
+        try:
+            await asyncio.to_thread(self.run_migration, "downgrade", "e7b1c90a42d3")
+            self.assertIsNotNone(await self.session.get(User, self.owner.id))
+            self.assertEqual(await self.session.scalar(select(OrganizationOwnership.user_id).where(
+                OrganizationOwnership.organization_id == self.org.id)), self.owner.id)
+        finally:
+            await self.session.close()
+            await self.engine.dispose()
+            await asyncio.to_thread(self.run_migration, "upgrade", "head")
+        await self.session.close()
+        await asyncio.to_thread(self.run_migration, "check")

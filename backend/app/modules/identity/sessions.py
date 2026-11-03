@@ -12,6 +12,7 @@ from pydantic import SecretStr
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.identity.account_models import AccountSecurity
 from app.modules.identity.models import User, UserPasswordCredential, UserSession, UserStatus
 
 
@@ -85,6 +86,9 @@ class SessionService:
             ).with_for_update())
             if active_user is None:
                 raise SessionIssueDeniedError("Não foi possível emitir a sessão.")
+            mfa_enabled = await self._session.scalar(select(AccountSecurity.mfa_enabled).where(AccountSecurity.user_id == user_id))
+            if mfa_enabled:
+                raise SessionIssueDeniedError("Segundo fator necessário.")
             if expected_password_hash is not None:
                 current_hash = await self._session.scalar(select(UserPasswordCredential.password_hash).where(
                     UserPasswordCredential.user_id == user_id,

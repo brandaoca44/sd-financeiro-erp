@@ -256,6 +256,10 @@ apropriado.
    `docs/revisao-de-acessos.md`. Próximo incremento: contratos de Company/CNPJ.
    Documentação essencial em `docs/autenticacao.md` e `docs/api-organizations.md`,
    em nível intermediário de detalhe (5/10), conforme preferência do desenvolvedor.
+   O README principal apresenta somente propósito, funcionalidades, funcionamento
+   e tecnologias, explicitando o caráter demonstrativo de habilidades técnicas e
+   entendimento do negócio. Condições da máquina, verificações locais, contagens
+   de testes e revisões de banco ficam na documentação técnica correspondente.
    Mensagens de validação do bootstrap ajustadas para indicar campo e regra sem
    refletir dados; três testes novos validados, totalizando 130 testes no projeto.
    Por decisão do desenvolvedor, novas senhas aceitam de 8 a 128 caracteres,
@@ -338,6 +342,23 @@ apropriado.
    ou estornos. Contrato em `docs/api-contas-a-pagar.md`; sem migration nova.
    Validação: 452 testes aprovados, 15 novos; health local 200 e GET/POST sem
    sessão 401. Nenhum título real criado e nenhum banco temporário restante.
+   Baixas manuais e estornos implementados com chaves independentes, saldo derivado,
+   bloqueio transacional e idempotência por empresa/ator/operação no PostgreSQL.
+   Inclui posição individual e movimentos paginados com leitura autorizada. Motivo
+   de estorno protegido, replay reautoriza e não duplica revisão/histórico. Migration
+   `b29e6431da08`, sem movimentos iniciais; downgrade protege dados financeiros.
+   Contrato em `docs/baixas-e-estornos.md`.
+   Validação: 477 testes aprovados, 25 novos; migration aplicada à porta 5433,
+   contagens anteriores preservadas, zero movimentos reais e zero bancos de teste
+   restantes. API local: health 200, baixa/posição/movimentos sem sessão 401.
+   Resumo de contas a pagar por empresa/período implementado: posição atual,
+   faixas de vencimento, baixas/estornos por ocorrência e série diária. Uma consulta
+   SQL autorizada por empresa evita snapshots mistos e dupla contagem. Não é caixa
+   nem fechamento histórico. Contrato em `docs/resumo-contas-a-pagar.md`; sem
+   migration nova. Frontend e homologação permanecem como próxima etapa do fluxo.
+   Validação: 495 testes aprovados, 18 novos. API local com health 200, contrato
+   no OpenAPI e resumo sem sessão 401. Nenhum dado financeiro real criado e nenhum
+   banco temporário restante.
 8. Integrações concretas exigidas pelo MVP, com contratos e adapters próprios.
 9. Homologação e produção: fluxos completos, segurança, recuperação de falhas,
    implantação e monitoramento.
@@ -490,7 +511,45 @@ explícita por empresa. A primeira entrega de backup cifrado e ensaio de recuper
 está implementada. Erros e logs seguros estão padronizados, com revisão da política
 de segredos por ambiente. O checklist de prontidão e o primeiro fluxo do MVP estão
 detalhados em `docs/prontidao-e-primeiro-mvp.md`. A fundação de persistência de contas
-a pagar, autorização por empresa e rotas de títulos estão implementadas. O próximo
-incremento é baixa e estorno, com saldo, idempotência e concorrência. As pendências de recuperação em
+a pagar, autorização por empresa, títulos, baixas e estornos estão implementados.
+O resumo consolidado por empresa/período também foi implementado, com totais
+validados e sem dupla contagem. O próximo incremento é interface e homologação
+desse fluxo. As pendências de recuperação em
 produção estão registradas em `docs/backup-e-recuperacao.md`, antes dos módulos
 empresariais.
+
+### Entrada de clientes e validação de identidade
+
+Cadastro individual com nome completo e CPF, confirmação de e-mail, recuperação e MFA estão preparados conforme [Ciclo de conta](ciclo-de-conta.md); envio de e-mail permanece desativado por decisão de produto. A abertura autônoma da empresa ainda depende de complementação do responsável (nascimento, endereço e representação), cadastro jurídico, contador e matriz de documentos. A atribuição de Master ocorrerá somente ao concluir a abertura validada da organização. Reconhecimento facial e upload de documentos são etapas futuras, sem coleta atual.
+
+### Migração de clientes e evolução comercial
+
+O fluxo de entrada de empresas que utilizam outro ERP, a separação entre núcleo e segmentos,
+português/inglês, as propostas de Essential, Professional e Enterprise, tutorial e assistente interno
+estão detalhados em [Evolução do produto e migração](evolucao-produto-e-migracao.md).
+São requisitos de planejamento, ainda sem importador, assinaturas, módulos setoriais ou IA implementados.
+A localização fiscal internacional permanece para uma etapa posterior.
+
+O foco comercial inicial foi confirmado como Empresarial/Serviços. A contratação combinará segmento
+e plano; cada segmento terá sua matriz Essential, Professional e Enterprise. O modelo será repetido
+individualmente para Saúde, Varejo e demais segmentos, sem liberação automática pelo plano Enterprise.
+Direitos de uso no backend, fronteiras dos motores e termos/privacidade a preparar estão em
+[Segmentos, contratação e governança](segmentos-contratacao-e-governanca.md).
+
+A matriz inicial de Essential, Professional e Enterprise para o segmento prioritário está em
+[Planos Empresarial/Serviços](planos-empresarial-servicos.md), com distinção de funcionalidades implementadas
+e futuras, limites propostos, direitos de uso, transições e critérios de aceite. Próximo incremento técnico:
+catálogo versionado e autorização comercial no backend, antes da cobrança ou oferta dos planos.
+
+O escopo funcional inclui cadastros separados de clientes, fornecedores, produtos, serviços e funcionários;
+boletos e notas fiscais vinculados às obrigações; alertas de vencimento; despesas de imóvel, água, energia,
+internet, comunicação, tecnologia, pessoal e demais categorias; faturamento, receitas e resultado gerencial.
+A organização por área, a prevenção de duplicidade entre nota/boleto/parcela, as restrições de dados de pessoal
+e a sequência de entregas estão no [Escopo operacional Empresarial](escopo-operacional-empresarial.md).
+A matriz dos planos foi ampliada para contemplar esses requisitos e a frente fiscal, como recursos planejados.
+
+O primeiro incremento comercial entregou o [catálogo interno e a página de planos](catalogo-assinaturas.md),
+com comparação pública e em configurações. O avaliador foi testado sem alterar acessos existentes;
+persistência de contratos e aplicação transacional da política nas rotas são o próximo passo.
+Conciliação, fechamento, compras e margem por projeto foram detalhados em
+[Lacunas operacionais para o ERP de serviços](lacunas-operacionais-erp.md).

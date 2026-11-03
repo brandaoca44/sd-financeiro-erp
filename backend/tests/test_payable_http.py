@@ -17,7 +17,7 @@ from app.modules.identity.rate_limit import LoginRateLimiter, LoginRateLimitPoli
 from app.modules.identity.sessions import SessionService
 
 
-class PayableHttpTests(CompanyGrantHttpFixture):
+class PayableHttpFixture(CompanyGrantHttpFixture):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self._wide_limit()
@@ -54,7 +54,8 @@ class PayableHttpTests(CompanyGrantHttpFixture):
     async def get(self, title, *, actor=None, company=None, org=None):
         return await self.client.get(self.path(title, company, org), headers=self.headers[actor or self.owner.id])
 
-    async def test_owner_full_title_flow_without_payment_operations(self):
+class PayableHttpTests(PayableHttpFixture):
+    async def test_owner_full_title_flow(self):
         response = await self.create(amount="0.10")
         self.assertEqual(response.status_code, 201)
         self.assertEqual(set(response.json()), {"id", "revision", "status"})
@@ -66,7 +67,7 @@ class PayableHttpTests(CompanyGrantHttpFixture):
         self.assertEqual((await self.get(title)).json()["status"], "CANCELLED")
         self.assertEqual((await self.cancel(title, revision=3)).status_code, 409)
         self.assertEqual((await self.edit(title, expected_revision=3)).status_code, 409)
-        self.assertEqual((await self.client.post(self.path(title)+"/payments", headers=self.headers[self.owner.id], json={})).status_code, 404)
+        self.assertEqual((await self.client.post(self.path(title)+"/payments", headers=self.headers[self.owner.id], json={})).status_code, 422)
 
     async def test_manage_only_does_not_read_or_receive_financial_fields(self):
         await self.grant("payables.manage")

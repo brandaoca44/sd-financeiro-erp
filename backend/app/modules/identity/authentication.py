@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_va
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.modules.identity.account_models import AccountSecurity
+from app.modules.identity.account_security import InvalidAction
 from app.modules.identity.models import User, UserPasswordCredential, UserStatus
 from app.modules.identity.passwords import verify_password
 from app.modules.identity.rate_limit import LoginRateLimiter
@@ -40,6 +42,7 @@ class AuthenticationService:
         *, dummy_hash: SecretStr, idle_timeout: timedelta, hash_concurrency: int = 2,
         hash_slots: asyncio.Semaphore | None = None,
     ) -> None:
+        self.account_service = None
         self._factory = session_factory
         self._limiter = limiter
         self._dummy_hash = dummy_hash
@@ -69,6 +72,15 @@ class AuthenticationService:
                 raise
             if not eligible or not valid:
                 raise InvalidCredentialsError("E-mail ou senha inválidos.")
+            async with self._factory() as reader:
+                enabled = await reader.scalar(select(AccountSecurity.mfa_enabled).where(AccountSecurity.user_id == row.id))
+            if enabled:
+                if self.account_service is None:
+                    raise AuthenticationBusyError()
+                try:
+                    return await self.account_service.issue_mfa_challenge(row.id, row.password_hash)
+                except InvalidAction:
+                    raise InvalidCredentialsError() from None
             async with self._factory() as writer:
                 try:
                     return await SessionService(writer, idle_timeout=self._idle_timeout).issue_for_authenticated_user(

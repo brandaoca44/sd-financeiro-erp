@@ -4,7 +4,8 @@
 
 Esta entrega implementa a política e a administração de permissões financeiras.
 As [rotas de títulos](api-contas-a-pagar.md) já consomem essa política.
-Baixas, estornos e posição consolidada continuam pendentes.
+[Baixas e estornos](baixas-e-estornos.md) também estão disponíveis. Posição
+consolidada continua pendente.
 
 | Chave | Autoridade independente |
 | --- | --- |
@@ -105,5 +106,5 @@ API local com health 200, contrato GET/PUT no OpenAPI e recusa 401 sem sessão,
 com `no-store`. Sucesso autenticado foi validado apenas em infraestrutura isolada.
 
 Serviços e rotas de lançamento, edição, cancelamento e consulta de títulos já
-consomem esta política. Baixas e estornos continuam para a etapa
-posterior com integridade de saldo, idempotência e concorrência.
+consomem esta política. Baixas e estornos agora também validam suas chaves
+independentes, com integridade de saldo, idempotência e concorrência.

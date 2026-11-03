@@ -116,7 +116,7 @@ posteriormente em `e7b1c90a42d3`, convites em `f3a82c17d905` e perfis/permissõe
 `a81e73c405bf`, ciclo de vínculos em `b92f8d06e4a1` e revisão de leitura em
 `c74e901a6bd2`, cadastro de empresas em `d85fa1049ce3` e concessões por empresa em
 `e96b2130ad74`; a fundação financeira está em `f07c4219be86` e suas permissões em
-`a18d5320cf97 (head)`, sem diferenças
+`a18d5320cf97`; baixas e estornos estão em `b29e6431da08 (head)`, sem diferenças
 pendentes de schema.
 O segredo foi gerado diretamente em `backend/.env`, sem exibição ou versionamento.
 O primeiro operador foi criado pelo desenvolvedor no comando interativo, sem
@@ -150,3 +150,5 @@ launcher `uv run python -m ops.serve --reload`, que aplica o formato seguro de l
 
 Referências: [autenticação da OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
 e [sessões da OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
+
+O incremento de cadastro público preparado, CPF cifrado, confirmação, recuperação e MFA está descrito em [Ciclo de conta](ciclo-de-conta.md). O provedor de e-mail permanece indefinido e os fluxos dependentes de envio estão desativados.

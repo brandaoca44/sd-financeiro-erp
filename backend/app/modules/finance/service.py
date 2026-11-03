@@ -31,7 +31,7 @@ class PayableService:
     def deny():
         raise AccessManagementDeniedError("Operação financeira não permitida.")
 
-    async def _authorize_write(self, organization_id, company_id, token):
+    async def _authorize_write(self, organization_id, company_id, token, *, permission_key=PermissionKey.PAYABLES_MANAGE):
         await self.session.execute(text("SET LOCAL lock_timeout = '5s'"))
         org = await self.session.scalar(select(Organization).where(Organization.id == organization_id).with_for_update())
         if org is None or org.status != "ACTIVE":
@@ -47,7 +47,7 @@ class PayableService:
             Company.id == company_id).with_for_update())
         if actor is None or member is None or company is None:
             self.deny()
-        if not await CompanyAccessPolicy(self.session).has_financial_permission(actor_id, organization_id, company_id, PermissionKey.PAYABLES_MANAGE):
+        if not await CompanyAccessPolicy(self.session).has_financial_permission(actor_id, organization_id, company_id, permission_key):
             self.deny()
         login = await self.session.scalar(select(UserSession).where(UserSession.token_hash == token_hash).with_for_update())
         now = datetime.now(timezone.utc)

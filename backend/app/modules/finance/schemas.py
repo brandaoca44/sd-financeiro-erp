@@ -84,3 +84,116 @@ class PayableResponse(PayableReceipt):
 class PayablePage(BaseModel):
     items: list[PayableResponse]
     next_cursor: UUID | None
+
+
+class PayablePayment(PayableCancel):
+    amount: Money
+    occurred_on: CalendarDate
+
+
+class PayableReversal(PayableCancel):
+    occurred_on: CalendarDate
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+
+
+class MovementReceipt(BaseModel):
+    payable_id: UUID
+    movement_id: UUID
+    revision: int
+    kind: Literal["PAYMENT", "REVERSAL"]
+
+
+class MovementResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    payable_id: UUID
+    kind: Literal["PAYMENT", "REVERSAL"]
+    amount: Decimal
+    occurred_on: date
+    reverses_id: UUID | None
+    reversal_reason: str | None
+    created_at: AwareDatetime
+
+    @field_serializer("amount")
+    def serialize_amount(self, value):
+        return format(value, ".2f")
+
+
+class MovementPage(BaseModel):
+    items: list[MovementResponse]
+    next_cursor: UUID | None
+
+
+class PayablePosition(BaseModel):
+    payable_id: UUID
+    revision: int
+    currency: Literal["BRL"] = "BRL"
+    amount: Decimal
+    paid_amount: Decimal
+    outstanding_amount: Decimal
+    settlement_status: Literal["OPEN", "PARTIALLY_PAID", "PAID", "CANCELLED"]
+
+    @field_serializer("amount", "paid_amount", "outstanding_amount")
+    def serialize_amount(self, value):
+        return format(value, ".2f")
+
+
+class CurrentPayables(BaseModel):
+    active_title_count: int
+    cancelled_title_count: int
+    unpaid_title_count: int
+    partial_title_count: int
+    paid_title_count: int
+    original_amount: Decimal
+    paid_amount: Decimal
+    outstanding_amount: Decimal
+    overdue_amount: Decimal
+    due_today_amount: Decimal
+    upcoming_amount: Decimal
+    later_amount: Decimal
+
+    @field_serializer("original_amount", "paid_amount", "outstanding_amount", "overdue_amount",
+                      "due_today_amount", "upcoming_amount", "later_amount")
+    def serialize_money(self, value):
+        return format(value, ".2f")
+
+
+class PeriodPayables(BaseModel):
+    original_due_amount: Decimal
+    outstanding_due_amount: Decimal
+    overdue_due_amount: Decimal
+    payments_amount: Decimal
+    reversals_amount: Decimal
+    net_paid_amount: Decimal
+
+    @field_serializer("original_due_amount", "outstanding_due_amount", "overdue_due_amount",
+                      "payments_amount", "reversals_amount", "net_paid_amount")
+    def serialize_money(self, value):
+        return format(value, ".2f")
+
+
+class PayablesDay(BaseModel):
+    day: date
+    original_due_amount: Decimal
+    outstanding_due_amount: Decimal
+    payments_amount: Decimal
+    reversals_amount: Decimal
+    net_paid_amount: Decimal
+
+    @field_serializer("original_due_amount", "outstanding_due_amount", "payments_amount", "reversals_amount", "net_paid_amount")
+    def serialize_money(self, value):
+        return format(value, ".2f")
+
+
+class PayablesSummary(BaseModel):
+    company_id: UUID
+    currency: Literal["BRL"] = "BRL"
+    balance_basis: Literal["CURRENT"] = "CURRENT"
+    timezone: Literal["America/Sao_Paulo"] = "America/Sao_Paulo"
+    as_of: date
+    period_start: date
+    period_end: date
+    upcoming_days: int
+    current: CurrentPayables
+    period: PeriodPayables
+    days: list[PayablesDay]

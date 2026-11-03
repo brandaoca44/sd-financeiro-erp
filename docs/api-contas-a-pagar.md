@@ -11,7 +11,8 @@ Todas as operações exigem Bearer válido e usuário, vínculo, tenant e empres
 | PUT `/{id}` | `payables.manage` | ID, revisão e estado atualizados |
 | POST `/{id}/cancel` | `payables.manage` | ID, revisão e estado CANCELLED |
 
-Não há DELETE, reabertura, baixa, estorno ou pagamento bancário. As permissões
+Não há DELETE, reabertura ou pagamento bancário. Baixas manuais e estornos têm
+[rotas próprias](baixas-e-estornos.md). As permissões
 `payables.settle`, `payables.reverse` e `companies.read` não autorizam estas rotas.
 O Master também precisa passar pelos controles de atividade e escopo.
 
@@ -72,7 +73,8 @@ a 4096 bytes nas escritas, `no-store`, `X-Request-ID` e logs por campos permitid
 Não requer migration nova nem cria títulos ou concessões reais. Testes HTTP usam
 bancos temporários e cobrem fluxo, isolamento, permissões, precisão, paginação,
 revogação, concorrência, rollback, Redis, HTTPS e limites. Próximo incremento:
-baixa e estorno com integridade de saldo e idempotência.
+posição consolidada por empresa e período. Baixa e estorno com idempotência
+já foram implementados no incremento descrito em [movimentos](baixas-e-estornos.md).
 
 Validação completa: **452 testes aprovados**, 15 novos de HTTP financeiro. Na API
 local, health 200 e GET/POST sem sessão 401 com `no-store`. Sucesso autenticado

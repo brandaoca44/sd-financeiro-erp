@@ -4,7 +4,7 @@
 
 A fundação permite continuar o desenvolvimento local com dados sintéticos. Não
 está liberada para produção ou para receber dados reais de clientes. A última
-validação de código teve 452 testes aprovados; este documento não acrescenta
+validação de código teve 495 testes aprovados; este documento não acrescenta
 implementações nem altera permissões, banco ou configuração.
 
 | Área | Entregue | Necessário antes de produção |
@@ -104,10 +104,12 @@ revogadas. Contrato em [permissões financeiras](permissoes-financeiras.md).
 
 Cada incremento deve documentar o contrato efetivamente entregue e passar pelos
 testes pertinentes. O item 1 tem contratos e persistência implementados, incluindo
-estrutura de movimentos; suas operações transacionais ainda não estão disponíveis.
-Os itens 2 e 3 também estão implementados; o próximo incremento é o item 4,
-baixa e estorno. Contrato atual: [API de títulos](api-contas-a-pagar.md). Não alterar as rotas
-de autenticação ou a política de expiração por inatividade para entregar o módulo.
+estrutura de movimentos. Os itens 2, 3, 4 e 5 também estão implementados na API.
+O próximo incremento é o item 6, interface e homologação. Contratos:
+[API de títulos](api-contas-a-pagar.md), [movimentos](baixas-e-estornos.md) e
+[resumo por empresa/período](resumo-contas-a-pagar.md).
+Não alterar as rotas de autenticação ou a política de expiração por inatividade
+para entregar o módulo.
 
 ## Critérios de aceite do fluxo
 

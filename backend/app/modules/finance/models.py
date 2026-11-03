@@ -63,6 +63,7 @@ class PayableMovement(Base):
         exact_amount("ck_payable_movements_amount"),
         CheckConstraint("(kind = 'PAYMENT' AND reverses_id IS NULL) OR (kind = 'REVERSAL' AND reverses_id IS NOT NULL AND reverses_id <> id)", name="ck_payable_movements_kind"),
         CheckConstraint("isfinite(occurred_on)", name="ck_payable_movements_date"),
+        CheckConstraint("reversal_reason IS NULL OR (kind = 'REVERSAL' AND reversal_reason = btrim(reversal_reason) AND length(reversal_reason) > 0)", name="ck_payable_movements_reason"),
         Index("ix_payable_movements_scope", "organization_id", "company_id", "payable_id", "created_at"),
     )
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -73,6 +74,7 @@ class PayableMovement(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(), nullable=False)
     occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
     reverses_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    reversal_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
     actor_user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -93,4 +95,28 @@ class PayableChange(Base):
     action: Mapped[str] = mapped_column(String(9), nullable=False)
     before_state: Mapped[dict] = mapped_column(JSONB, nullable=False)
     after_state: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class PayableMovementRequest(Base):
+    """Resultado mínimo idempotente; chave isolada por ator/empresa/operação."""
+    __tablename__ = "payable_movement_requests"
+    __table_args__ = (
+        actor_member("actor_user_id", "fk_payable_requests_actor"),
+        ForeignKeyConstraint(["organization_id", "company_id", "payable_id", "movement_id"],
+            ["payable_movements.organization_id", "payable_movements.company_id", "payable_movements.payable_id", "payable_movements.id"],
+            ondelete="RESTRICT", name="fk_payable_requests_movement"),
+        CheckConstraint("operation IN ('PAYMENT', 'REVERSAL')", name="ck_payable_requests_operation"),
+        CheckConstraint("payload_hash ~ '^[0-9a-f]{64}$'", name="ck_payable_requests_hash"),
+        CheckConstraint("title_revision > 0", name="ck_payable_requests_revision"),
+    )
+    organization_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    actor_user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    operation: Mapped[str] = mapped_column(String(8), primary_key=True)
+    request_key: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payable_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    movement_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    title_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

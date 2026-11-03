@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import AwareDatetime, BaseModel, Field, SecretStr
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.modules.identity.account_security import MfaChallenge, AccountUnavailable
 from app.modules.identity.authentication import (
     AuthenticationBusyError, AuthenticationService, InvalidCredentialsError, LoginRequest,
 )
@@ -24,6 +25,12 @@ class LoginResponse(BaseModel):
 
     access_token: str = Field(repr=False)
     token_type: Literal["bearer"] = "bearer"
+    expires_at: AwareDatetime
+
+
+class MfaChallengeResponse(BaseModel):
+    mfa_required: Literal[True] = True
+    challenge_token: str = Field(repr=False)
     expires_at: AwareDatetime
 
 
@@ -69,11 +76,11 @@ async def record_authorized_activity(request: Request, token: SecretStr) -> None
         raise HTTPException(401, "Sessão inválida ou expirada.", headers={"WWW-Authenticate": "Bearer"})
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login", response_model=LoginResponse | MfaChallengeResponse)
 async def login(
     data: LoginRequest, request: Request,
     authentication: AuthenticationService = Depends(get_authentication),
-) -> LoginResponse:
+) -> LoginResponse | MfaChallengeResponse:
     if request.client is None:
         raise unavailable()
     try:
@@ -83,8 +90,10 @@ async def login(
     except LoginRateLimitExceededError as error:
         raise HTTPException(429, "Muitas tentativas. Aguarde antes de tentar novamente.",
                             headers={"Retry-After": str(error.retry_after_seconds)}) from None
-    except (LoginRateLimitUnavailableError, AuthenticationBusyError, SQLAlchemyError, ValueError):
+    except (LoginRateLimitUnavailableError, AuthenticationBusyError, AccountUnavailable, SQLAlchemyError, ValueError):
         raise unavailable() from None
+    if isinstance(issued, MfaChallenge):
+        return MfaChallengeResponse(challenge_token=issued.token.get_secret_value(), expires_at=issued.expires_at)
     return LoginResponse(access_token=issued.token.get_secret_value(), expires_at=issued.expires_at)
 
 

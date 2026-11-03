@@ -2,16 +2,20 @@
 
 import asyncio
 import hashlib
+import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from pydantic import SecretStr
+from cryptography.fernet import Fernet
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.identity.access_models import OrganizationOwnership, OwnershipChange
+from app.modules.identity.account_models import AccountSecurity
+from app.modules.identity.account_security import RegisterRequest
 from app.modules.identity.invitation_models import OrganizationInvitation
 from app.modules.identity.invitation_schemas import AcceptInvitationRequest
 from app.modules.identity.models import (
@@ -46,11 +50,12 @@ async def _password_work(work):
 class InvitationService:
     """Sessão nova por chamada; HTTP limita admissões e concorrência antes do serviço."""
 
-    def __init__(self, session: AsyncSession, *, idle_timeout: timedelta = timedelta(minutes=30)):
+    def __init__(self, session: AsyncSession, *, idle_timeout: timedelta = timedelta(minutes=30), identity_key: SecretStr | None = None):
         if not timedelta(0) < idle_timeout <= timedelta(days=1):
             raise ValueError("Prazo de inatividade inválido.")
         self.session = session
         self.idle_timeout = idle_timeout
+        self.identity_key = identity_key
 
     @staticmethod
     def deny():
@@ -215,17 +220,25 @@ class InvitationService:
                 if credential is None or not (await _password_work(verify_password(data.password, credential)))[0]:
                     self.deny()
             else:
-                if data.name is None:
+                if data.name is None or data.cpf is None or self.identity_key is None:
                     self.deny()
                 try:
+                    full_name = RegisterRequest.name_valid(data.name)
                     validate_new_password(data.password)
                 except ValueError:
                     self.deny()
                 hashed = await _password_work(hash_password(data.password))
-                user = User(name=data.name, email=invitation.email, status=UserStatus.ACTIVE)
+                key = self.identity_key.get_secret_value().encode()
+                cpf = data.cpf.get_secret_value()
+                cpf_digest = hmac.new(key, ("cpf:" + cpf).encode(), hashlib.sha256).hexdigest()
+                if await self.session.scalar(select(AccountSecurity.user_id).where(AccountSecurity.cpf_digest == cpf_digest)):
+                    self.deny()
+                user = User(name=full_name, email=invitation.email, status=UserStatus.ACTIVE)
                 self.session.add(user)
                 await self.session.flush()
                 self.session.add(UserPasswordCredential(user_id=user.id, password_hash=hashed.get_secret_value()))
+                self.session.add(AccountSecurity(user_id=user.id, cpf_encrypted=Fernet(key).encrypt(cpf.encode()).decode(),
+                    cpf_digest=cpf_digest))
             member = await self.session.scalar(select(OrganizationMembership).where(
                 OrganizationMembership.user_id == user.id, OrganizationMembership.organization_id == organization_id,
             ).with_for_update())

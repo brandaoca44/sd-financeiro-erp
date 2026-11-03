@@ -36,7 +36,7 @@ async def guarded_invitation(request: Request, identifier: str, *, accepting=Fal
             raise unavailable() from None
         try:
             async with request.app.state.session_factory() as writer:
-                yield InvitationService(writer, idle_timeout=timedelta(
+                yield InvitationService(writer, identity_key=request.app.state.settings.auth_identity_encryption_key, idle_timeout=timedelta(
                     seconds=request.app.state.settings.auth_idle_timeout_seconds))
         finally:
             slots.release()
