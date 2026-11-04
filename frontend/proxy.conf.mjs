@@ -1,6 +1,6 @@
 export default {
   '/api/**': {
-    target: 'http://127.0.0.1:8000',
+    target: `http://127.0.0.1:${Number(process.env.SDF_API_PORT || 8000)}`,
     changeOrigin: false,
     configure(proxy) {
       // Não imprimir URL, headers ou detalhes de conexão em erros do proxy local.

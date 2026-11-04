@@ -12,6 +12,8 @@ from app.modules.identity import permission_models
 from app.modules.identity import company_access_models
 from app.modules.commercial import models as commercial_models
 from app.modules.finance import models as finance_models
+from app.modules.people import collaborators as collaborator_models
+from app.modules.finance import billing as billing_models
 from app.modules.finance import expenses as expense_models
 from alembic import context
 from sqlalchemy import pool

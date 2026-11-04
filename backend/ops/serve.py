@@ -19,6 +19,7 @@ def event_loop():
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reload", action="store_true")
+    parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
     try:
         settings = get_settings()
@@ -29,7 +30,7 @@ def main(argv=None):
         print("Reload é permitido somente em desenvolvimento e testes.", file=sys.stderr)
         return 1
     import uvicorn
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=args.reload,
+    uvicorn.run("app.main:app", host="127.0.0.1", port=args.port, reload=args.reload,
                 proxy_headers=False, access_log=False, log_config=logging_config(),
                 loop="ops.serve:event_loop")
     return 0

@@ -1,15 +1,18 @@
 """Registro de despesas e geração transacional da obrigação financeira."""
+from datetime import date
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, StringConstraints
-from sqlalchemy import Date, ForeignKeyConstraint, Numeric, String, UniqueConstraint, Uuid, select
-from sqlalchemy.orm import mapped_column
+from sqlalchemy import Boolean, Date, ForeignKeyConstraint, Numeric, String, UniqueConstraint, Uuid, and_, case, func, select
+from sqlalchemy.orm import aliased, mapped_column
 
 from app.api.v1.auth import get_current_session, get_session_token, record_authorized_activity
 from app.database.base import Base
-from app.modules.finance.models import actor_member, scope_company
+from app.modules.finance.recurrence_calendar import ContractDueDay
+from app.modules.finance.models import Payable, PayableMovement, actor_member, scope_company
 from app.modules.finance.router import writer
 from app.modules.finance.schemas import CalendarDate, Money, PayableCreate
 from app.modules.finance.service import PayableConflictError, PayableService
@@ -76,7 +79,7 @@ class Expense(Base):
 class ExpenseCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     description: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
-    category: Literal["INTERNET", "ENERGIA", "AGUA", "ESGOTO", "ALUGUEL", "PESSOAL", "OUTROS"]
+    category: Literal["INTERNET", "ENERGIA", "AGUA", "ESGOTO", "ALUGUEL", "PESSOAL", "ASSINATURA", "OUTROS"]
     supplier: SupplierName | None = None
     supplier_id: UUID | None = None
     document_type: Literal["BOLETO", "NOTA_FISCAL", "OUTRO"] | None = None
@@ -84,6 +87,35 @@ class ExpenseCreate(BaseModel):
     amount: Money
     issue_date: CalendarDate
     due_date: CalendarDate | None = None
+
+
+class ExpenseRuleCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    description: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+    category: Literal["INTERNET", "ENERGIA", "AGUA", "ESGOTO", "ALUGUEL", "PESSOAL", "ASSINATURA", "OUTROS"]
+    supplier_id: UUID
+    due_day: ContractDueDay
+    fixed_amount: Money | None = None
+
+
+class ExpenseRule(Base):
+    __tablename__ = "expense_rules"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "company_id", "supplier_id"],
+            ["finance_suppliers.organization_id", "finance_suppliers.company_id", "finance_suppliers.id"],
+            name="fk_expense_rules_supplier", ondelete="RESTRICT",
+        ),
+    )
+    organization_id = mapped_column(Uuid, primary_key=True)
+    company_id = mapped_column(Uuid, primary_key=True)
+    id = mapped_column(Uuid, primary_key=True)
+    description = mapped_column(String(300), nullable=False)
+    category = mapped_column(String(20), nullable=False)
+    supplier_id = mapped_column(Uuid, nullable=False)
+    due_day = mapped_column(Numeric(2, 0), nullable=False)
+    fixed_amount = mapped_column(Numeric, nullable=True)
+    cancelled = mapped_column(Boolean, nullable=False, server_default="false")
 
 
 class ExpenseReceipt(BaseModel):
@@ -132,6 +164,8 @@ router = APIRouter(prefix="/organizations/{organization_id}/companies/{company_i
 async def register_expense(organization_id: UUID, company_id: UUID, data: ExpenseCreate, request: Request,
                            request_id: UUID = Header(alias="Idempotency-Key"),
                            current=Depends(get_current_session), token=Depends(get_session_token)):
+    if data.category == "PESSOAL":
+        raise HTTPException(422, "Gastos com pessoal pertencem ao módulo Pessoas.")
     if data.due_date is not None and data.due_date < data.issue_date:
         raise HTTPException(422, "O vencimento deve ser igual ou posterior à emissão.")
     if (data.supplier_id is None) == (data.supplier is None):
@@ -144,7 +178,7 @@ async def register_expense(organization_id: UUID, company_id: UUID, data: Expens
 
 @router.get("", response_model=list[ExpenseResponse])
 async def list_expenses(organization_id: UUID, company_id: UUID, request: Request,
-                        current=Depends(get_current_session), token=Depends(get_session_token)):
+                        current=Depends(get_current_session), token=Depends(get_session_token), expense_id: UUID | None = None):
     async with request.app.state.session_factory() as session:
         policy = CompanyAccessPolicy(session)
         if not await policy.has_financial_permission(current.user_id, organization_id, company_id, PermissionKey.PAYABLES_READ):
@@ -153,9 +187,12 @@ async def list_expenses(organization_id: UUID, company_id: UUID, request: Reques
             Company.id == company_id, Company.organization_id == organization_id,
             policy.financial_visibility(current.user_id, organization_id, PermissionKey.PAYABLES_READ),
         ).exists()
-        rows = await session.scalars(select(Expense).where(
+        query = select(Expense).where(
             Expense.organization_id == organization_id, Expense.company_id == company_id, visible_company,
-        ).order_by(Expense.issue_date.desc(), Expense.id.desc()).limit(100))
+        )
+        if expense_id is not None:
+            query = query.where(Expense.id == expense_id)
+        rows = await session.scalars(query.order_by(Expense.issue_date.desc(), Expense.id.desc()).limit(100))
         result = [ExpenseResponse.model_validate(row) for row in rows]
     await record_authorized_activity(request, token)
     return result
@@ -200,5 +237,181 @@ async def list_suppliers(organization_id: UUID, company_id: UUID, request: Reque
             Supplier.organization_id == organization_id, Supplier.company_id == company_id, visible,
         ).order_by(Supplier.name, Supplier.id))
         result = [SupplierOption.model_validate(row) for row in rows]
+    await record_authorized_activity(request, token)
+    return result
+
+
+@router.post("/rules", status_code=201)
+async def create_expense_rule(organization_id: UUID, company_id: UUID, data: ExpenseRuleCreate,
+                              request: Request, request_id: UUID = Header(alias="Idempotency-Key"),
+                              current=Depends(get_current_session), token=Depends(get_session_token)):
+    if data.category == "PESSOAL":
+        raise HTTPException(422, "Gastos com pessoal pertencem ao módulo Pessoas.")
+    async with writer(request, current.user_id, service_class=ExpenseService) as service:
+        async with service.session.begin():
+            await service._authorize_write(organization_id, company_id, token)
+            if await service.session.get(Supplier, (organization_id, company_id, data.supplier_id)) is None:
+                service.deny()
+            previous = await service.session.get(ExpenseRule, (organization_id, company_id, request_id))
+            values = data.model_dump()
+            if previous is None:
+                service.session.add(ExpenseRule(organization_id=organization_id, company_id=company_id,
+                                                id=request_id, **values))
+            elif any(getattr(previous, key) != value for key, value in values.items()):
+                raise PayableConflictError()
+    return {"id": request_id}
+
+
+class ExpenseRuleResponse(ExpenseRuleCreate):
+    cancelled: bool
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
+@router.get("/rules", response_model=list[ExpenseRuleResponse])
+async def list_expense_rules(organization_id: UUID, company_id: UUID, request: Request,
+                             current=Depends(get_current_session), token=Depends(get_session_token)):
+    async with request.app.state.session_factory() as session:
+        policy = CompanyAccessPolicy(session)
+        visible = select(Company.id).where(
+            Company.id == company_id, Company.organization_id == organization_id,
+            policy.financial_visibility(current.user_id, organization_id, PermissionKey.PAYABLES_READ),
+        ).exists()
+        if not await session.scalar(select(visible)):
+            raise HTTPException(404, "Operação financeira não permitida.")
+        rows = await session.scalars(select(ExpenseRule).where(
+            ExpenseRule.organization_id == organization_id, ExpenseRule.company_id == company_id, visible,
+        ).order_by(ExpenseRule.description, ExpenseRule.id))
+        result = [ExpenseRuleResponse(
+            id=row.id, description=row.description, category=row.category, supplier_id=row.supplier_id,
+            due_day=int(row.due_day), fixed_amount=row.fixed_amount, cancelled=row.cancelled,
+        ) for row in rows]
+    await record_authorized_activity(request, token)
+    return result
+
+
+@router.put("/rules/{rule_id}", status_code=204)
+async def update_expense_rule(organization_id: UUID, company_id: UUID, rule_id: UUID,
+                              data: ExpenseRuleCreate, request: Request,
+                              current=Depends(get_current_session), token=Depends(get_session_token)):
+    if data.category == "PESSOAL":
+        raise HTTPException(422, "Gastos com pessoal pertencem ao módulo Pessoas.")
+    async with writer(request, current.user_id, service_class=ExpenseService) as service:
+        async with service.session.begin():
+            await service._authorize_write(organization_id, company_id, token)
+            rule = await service.session.get(ExpenseRule, (organization_id, company_id, rule_id))
+            supplier = await service.session.get(Supplier, (organization_id, company_id, data.supplier_id))
+            if rule is None or supplier is None:
+                service.deny()
+            if rule.cancelled:
+                raise PayableConflictError()
+            for key, value in data.model_dump().items():
+                setattr(rule, key, value)
+
+
+@router.post("/rules/{rule_id}/cancel", status_code=204)
+async def cancel_expense_rule(organization_id: UUID, company_id: UUID, rule_id: UUID, request: Request,
+                              current=Depends(get_current_session), token=Depends(get_session_token)):
+    async with writer(request, current.user_id, service_class=ExpenseService) as service:
+        async with service.session.begin():
+            await service._authorize_write(organization_id, company_id, token)
+            rule = await service.session.get(ExpenseRule, (organization_id, company_id, rule_id))
+            if rule is None:
+                service.deny()
+            rule.cancelled = True
+
+
+@router.get("/by-payable/{payable_id}", response_model=ExpenseResponse | None)
+async def expense_origin(organization_id: UUID, company_id: UUID, payable_id: UUID, request: Request,
+                         current=Depends(get_current_session), token=Depends(get_session_token)):
+    async with request.app.state.session_factory() as session:
+        policy = CompanyAccessPolicy(session)
+        if not await policy.has_financial_permission(current.user_id, organization_id, company_id, PermissionKey.PAYABLES_READ):
+            raise HTTPException(404, "Operação financeira não permitida.")
+        visible = select(Company.id).where(
+            Company.id == company_id, Company.organization_id == organization_id,
+            policy.financial_visibility(current.user_id, organization_id, PermissionKey.PAYABLES_READ),
+        ).exists()
+        row = await session.scalar(select(Expense).where(
+            Expense.organization_id == organization_id, Expense.company_id == company_id,
+            Expense.payable_id == payable_id, visible,
+        ))
+        result = ExpenseResponse.model_validate(row) if row else None
+    await record_authorized_activity(request, token)
+    return result
+
+
+class MonthlyPayment(BaseModel):
+    id: UUID
+    expense_id: UUID | None
+    description: str
+    category: str | None
+    supplier: str | None
+    document_type: str | None
+    document_reference: str | None
+    occurred_on: date
+    amount: Decimal
+    status: Literal["ESTORNO", "ESTORNADO", "INTEGRAL", "PARCIAL"]
+
+
+class MonthlyPayments(BaseModel):
+    items: list[MonthlyPayment]
+    count: int
+    paid: Decimal
+    reversed: Decimal
+    net: Decimal
+
+
+@router.get("/monthly-payments", response_model=MonthlyPayments)
+async def monthly_payments(organization_id: UUID, company_id: UUID, request: Request,
+                           month: Annotated[str, Query(pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$")],
+                           current=Depends(get_current_session), token=Depends(get_session_token)):
+    try:
+        start = date.fromisoformat(month + "-01")
+        end = date(start.year + (start.month == 12), start.month % 12 + 1, 1)
+    except ValueError:
+        raise HTTPException(422, "Mês inválido.") from None
+
+    async with request.app.state.session_factory() as session:
+        policy = CompanyAccessPolicy(session)
+        visible = select(Company.id).where(
+            Company.organization_id == organization_id, Company.id == company_id,
+            policy.financial_visibility(current.user_id, organization_id, PermissionKey.PAYABLES_READ),
+        ).exists()
+        if not await session.scalar(select(visible)):
+            raise HTTPException(404, "Operação financeira não permitida.")
+
+        movement = PayableMovement
+        reversal = aliased(PayableMovement)
+        was_reversed = select(reversal.id).where(
+            reversal.organization_id == organization_id, reversal.company_id == company_id,
+            reversal.payable_id == movement.payable_id, reversal.reverses_id == movement.id,
+        ).exists()
+        paid = func.sum(case((movement.kind == "PAYMENT", movement.amount), else_=0)).over()
+        reversed_total = func.sum(case((movement.kind == "REVERSAL", movement.amount), else_=0)).over()
+        query = select(
+            movement.id, Expense.id.label("expense_id"), Payable.description, Expense.category,
+            Expense.supplier, Expense.document_type, Expense.document_reference,
+            movement.occurred_on, movement.amount,
+            case((movement.kind == "REVERSAL", "ESTORNO"), (was_reversed, "ESTORNADO"),
+                 (movement.amount >= Payable.amount, "INTEGRAL"), else_="PARCIAL").label("status"),
+            func.count().over().label("count"), paid.label("paid"), reversed_total.label("reversed"),
+        ).join(Payable, and_(
+            Payable.organization_id == movement.organization_id, Payable.company_id == movement.company_id,
+            Payable.id == movement.payable_id,
+        )).outerjoin(Expense, and_(
+            Expense.organization_id == movement.organization_id, Expense.company_id == movement.company_id,
+            Expense.payable_id == movement.payable_id,
+        )).where(
+            movement.organization_id == organization_id, movement.company_id == company_id, visible,
+            movement.occurred_on >= start, movement.occurred_on < end,
+        ).order_by(movement.occurred_on.desc(), movement.id.desc()).limit(200)
+        rows = (await session.execute(query)).mappings().all()
+        first = rows[0] if rows else {"count": 0, "paid": Decimal(0), "reversed": Decimal(0)}
+        result = MonthlyPayments(
+            items=[MonthlyPayment.model_validate(row) for row in rows],
+            count=first["count"], paid=first["paid"], reversed=first["reversed"],
+            net=first["paid"] - first["reversed"],
+        )
     await record_authorized_activity(request, token)
     return result

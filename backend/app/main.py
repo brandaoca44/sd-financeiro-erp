@@ -34,6 +34,8 @@ from app.modules.identity.rate_limit import LoginRateLimiter, LoginRateLimitPoli
 from app.modules.organizations.router import router as organization_router
 from app.modules.organizations.company_router import router as company_router
 from app.modules.finance.router import router as payable_router
+from app.modules.people.collaborators import router as collaborators_router
+from app.modules.finance.billing import router as billing_router
 from app.modules.finance.expenses import router as expenses_router, supplier_router
 
 def create_app(
@@ -155,6 +157,8 @@ def create_app(
     application.include_router(company_access_router, prefix=config.api_v1_prefix)
     application.include_router(workspace_router, prefix=config.api_v1_prefix)
     application.include_router(payable_router, prefix=config.api_v1_prefix)
+    application.include_router(collaborators_router, prefix=config.api_v1_prefix)
+    application.include_router(billing_router, prefix=config.api_v1_prefix)
     application.include_router(expenses_router, prefix=config.api_v1_prefix)
     application.include_router(supplier_router, prefix=config.api_v1_prefix)
     return application

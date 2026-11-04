@@ -18,9 +18,11 @@ describe('Operações financeiras no cliente',()=>{
     component.open('pay',title);component.form.patchValue({amount:'40,00',occurred_on:'2026-11-02'});api.write.mockRejectedValueOnce(new HttpErrorResponse({status:0}));await component.submit();expect(component.pending()).not.toBeNull();
     const original=api.write.mock.calls[0];component.form.patchValue({amount:'99,00'});api.write.mockResolvedValueOnce({});await component.submit();const retry=api.write.mock.calls[1];expect(retry[4]).toBe(original[4]);expect(retry[2]).toEqual(original[2]);expect(retry[2]['amount']).toBe('40.00');fixture.destroy();
   });
-  it('não repete criação sem idempotência após timeout',async()=>{
-    const fixture=TestBed.createComponent(Payables);fixture.detectChanges();const component=fixture.componentInstance;
-    component.open('create');component.form.patchValue({description:'Despesa',amount:'10,00',issue_date:'2026-11-01',due_date:'2026-11-10'});api.write.mockRejectedValueOnce(new HttpErrorResponse({status:0}));await component.submit();await component.submit();expect(api.write).toHaveBeenCalledTimes(1);expect(component.uncertainCreate()).toBe(true);fixture.destroy();
+  it('orienta novos lançamentos para Despesas', () => {
+    const fixture = TestBed.createComponent(Payables);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Cadastre novas cobranças em Despesas');
+    expect(fixture.nativeElement.textContent).not.toContain('Novo título');
   });
   it('descarta títulos de uma empresa quando a resposta chega depois da troca',async()=>{
     let resolveOld!:(value:unknown)=>void;api.titles.mockImplementationOnce(()=>new Promise(resolve=>resolveOld=resolve));
