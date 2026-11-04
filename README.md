@@ -12,7 +12,7 @@ de fluxos de negócio concretos, com regras explícitas e integridade transacion
 
 ### Acesso corporativo
 
-![Tela de login do Sistema Digital Financeiro](docs/images/login.png)
+![Tela de login do Sistema Digital Financeiro](docs/images/login-corporativo.png)
 
 ### Criação de conta
 
