@@ -8,6 +8,16 @@ backend, modelagem de dados, segurança e testes, junto ao entendimento das regr
 e dos processos de um sistema de gestão empresarial. Seu desenvolvimento parte
 de fluxos de negócio concretos, com regras explícitas e integridade transacional.
 
+## Demonstração da interface
+
+### Acesso corporativo
+
+![Tela de login do Sistema Digital Financeiro](docs/images/login.png)
+
+### Criação de conta
+
+![Tela de cadastro de identidade e acesso](docs/images/cadastro.png)
+
 ## O que o sistema faz
 
 - Organiza empresas identificadas por CNPJ dentro de organizações independentes.
