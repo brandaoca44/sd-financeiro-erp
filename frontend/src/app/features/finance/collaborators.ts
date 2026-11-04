@@ -1,3 +1,4 @@
+import { BankSelector } from '../../core/bank-selector';
 import { dateLabel, money } from '../../core/finance';
 import { HttpClient } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
@@ -18,7 +19,7 @@ interface Collaborator {
 
 @Component({
   selector: 'sdf-collaborators',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, BankSelector],
   styles: `
     form { display: grid; gap: 1rem; max-inline-size: 66rem; }
     .profile-block {
@@ -36,6 +37,8 @@ interface Collaborator {
     .private-section + .private-section { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #dbe5f0; }
     .address-grid { display: grid; grid-template-columns: minmax(0, 9rem) minmax(0, 1fr); gap: .85rem 1rem; }
     @media (max-width: 560px) { .address-grid { grid-template-columns: minmax(0, 1fr); } }
+    .details-grid > * { min-width: 0; }
+    .bank-field { grid-column: 1 / -1; display: grid; gap: .4rem; }
     .private-section h3 { margin-bottom: .75rem; }
     .form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .625rem; }
     .form-actions .primary { background: linear-gradient(115deg, #173762, #27548d); }
@@ -116,8 +119,14 @@ interface Collaborator {
                 <h3>Remuneração e dados bancários</h3>
                 <div class="details-grid">
               @for (field of privateFields.slice(7); track field.key) {
+                @if (field.key === 'bank') {
+                  <div class="bank-field"><label id="collaborator-bank-label">Banco (obrigatório)</label>
+                    <sdf-bank-selector formControlName="bank" aria-labelledby="collaborator-bank-label" />
+                  </div>
+                } @else {
                 <label>{{field.label}}{{requiredPrivate.has(field.key) ? ' (obrigatório)' : ''}}<input [required]="requiredPrivate.has(field.key)" [type]="field.type" [formControlName]="field.key" [maxLength]="field.max" [attr.inputmode]="numericFields.has(field.key) ? 'numeric' : null"
                   (input)="filterDigits(field.key, $event)" autocomplete="off"></label>
+                }
               }
               <label>Tipo de conta (obrigatório)<select formControlName="account_type" required>
                 <option value="">Selecione</option>
@@ -126,6 +135,19 @@ interface Collaborator {
                 }
               </select></label>
                 </div>
+              </section>
+              <section class="private-section">
+                <h3>Chave Pix (opcional)</h3>
+                <div class="details-grid">
+                  <label>Tipo de chave<select formControlName="pix_type">
+                    <option value="">Sem chave Pix</option>
+                    <option value="CPF">CPF</option><option value="CNPJ">CNPJ</option>
+                    <option value="EMAIL">E-mail</option><option value="PHONE">Telefone</option>
+                    <option value="RANDOM">Chave aleatória</option>
+                  </select></label>
+                  <label>Chave Pix<input formControlName="pix_key" maxlength="254" autocomplete="off"></label>
+                </div>
+                <p class="field-help">Para telefone, informe +55, DDD e número. A chave fica vinculada a este cadastro.</p>
               </section>
             </div>
           </details>
@@ -247,7 +269,7 @@ export class Collaborators {
     {key: 'cpf', label: 'CPF (11 dígitos)', max: 11, type: 'text'},
     {key: 'rg', label: 'RG', max: 80, type: 'text'},
     {key: 'cnh', label: 'CNH (11 dígitos)', max: 11, type: 'text'},
-    {key: 'passport', label: 'Passaporte (opcional)', max: 80, type: 'text'},
+    {key: 'passport', label: 'Passaporte (opcional)', max: 20, type: 'text'},
     {key: 'birth_date', label: 'Data de nascimento', max: 10, type: 'date'},
     {key: 'birthplace', label: 'Cidade e UF ou país de nascimento', max: 250, type: 'text'},
     {key: 'phone', label: 'Celular com DDD (somente números)', max: 11, type: 'tel'},
@@ -260,9 +282,10 @@ export class Collaborators {
   readonly form = this.builder.group({
     name: ['', Validators.required], job_title: ['', Validators.required],
     employment_type: [''], work_model: [''], admission_date: [''],
-    details: this.builder.record(Object.fromEntries([...this.privateFields.map(field => field.key), 'account_type', 'cep', 'address'].map(key => [key, this.builder.control('', [
+    details: this.builder.record(Object.fromEntries([...this.privateFields.map(field => field.key), 'account_type', 'cep', 'address', 'pix_type', 'pix_key'].map(key => [key, this.builder.control('', [
       ...(this.requiredPrivate.has(key) ? [Validators.required] : []),
       ...(key === 'cpf' || key === 'cnh' ? [Validators.pattern(/^[0-9]{11}$/)] : []),
+      ...(key === 'passport' ? [Validators.pattern(/^(?=.*[0-9])[A-Za-z0-9]{6,20}$/)] : []),
       ...(key === 'cep' ? [Validators.pattern(/^[0-9]{8}$/)] : []),
       ...(key === 'phone' ? [Validators.pattern(/^[0-9]{10,11}$/)] : []),
       ...(key === 'branch' || key === 'account' || key === 'rg' ? [Validators.pattern(/^[0-9]+$/)] : []),
@@ -310,6 +333,13 @@ export class Collaborators {
   }
 
   filterDigits(key: string, event: Event): void {
+    if (key === 'passport') {
+      const input = event.target as HTMLInputElement;
+      const passport = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      input.value = passport;
+      this.form.controls.details.controls[key].setValue(passport);
+      return;
+    }
     if (!this.numericFields.has(key)) return;
     const input = event.target as HTMLInputElement;
     const digits = input.value.replace(/[^0-9]/g, '');

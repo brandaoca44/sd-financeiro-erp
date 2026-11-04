@@ -53,7 +53,7 @@ export class FinanceShell {
   readonly workspaces=inject(Workspaces);private session=inject(Session);private router=inject(Router);
   readonly error=signal('');readonly leaving=signal(false);
   constructor(){effect(()=>{if(!this.session.token())void this.router.navigateByUrl('/login');});void this.workspaces.load();}
-  get isAccountSettings():boolean{return ['/finance/security','/finance/subscription','/finance/help'].includes(this.router.url.split('?')[0].split('#')[0]);}
+  get isAccountSettings():boolean{return ['/finance/account','/finance/security','/finance/subscription','/finance/help'].includes(this.router.url.split('?')[0].split('#')[0]);}
   readonly menu = [
     {label: 'Financeiro', items: [
       {path: 'overview', label: 'Visão financeira', icon: 'M4 19V5m0 14h16M8 15v-3m4 3V8m4 7v-5m4 5V6'},
@@ -65,6 +65,7 @@ export class FinanceShell {
       {path: 'collaborators', label: 'Colaboradores', icon: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2m10-13a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm6 13v-2a4 4 0 0 0-3-4'},
     ]},
     {label: 'Configurações', items: [
+      {path: 'account', label: 'Minha conta', icon: 'M20 21v-2a6 6 0 0 0-12 0v2m10-13a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z'},
       {path: 'security', label: 'Segurança da conta', icon: 'M12 22s7-3 7-10V5l-7-3-7 3v7c0 7 7 10 7 10Zm-3-10 2 2 4-4'},
       {path: 'subscription', label: 'Assinatura e planos', icon: 'M5 4h14v16H5zM8 9h8m-8 4h8m-8 4h4'},
       {path: 'help', label: 'Tutoriais e ajuda', icon: 'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0ZM9 9a3 3 0 1 1 4 2.8c-.7.3-1 1-1 2.2m0 3h.01'},

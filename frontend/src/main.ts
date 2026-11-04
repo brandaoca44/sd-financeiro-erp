@@ -21,6 +21,7 @@ const routes: Routes = [
     {path: 'payables', canDeactivate:[(component:{canLeave:()=>boolean})=>component.canLeave()], loadComponent: () => import('./app/features/finance/payables').then(m => m.Payables)},
     {path:'subscription',data:{embedded:true},loadComponent:()=>import('./app/features/subscription/subscription').then(m=>m.SubscriptionPage)},
     {path:'help',loadComponent:()=>import('./app/core/context-help').then(m=>m.HelpSettings)},
+    {path:'account',loadComponent:()=>import('./app/features/auth/my-account').then(m=>m.MyAccount)},
     {path:'security',loadComponent:()=>import('./app/features/auth/security').then(m=>m.AccountSecurityPage)},
     {path: '', redirectTo: 'overview', pathMatch: 'full'}
   ]},

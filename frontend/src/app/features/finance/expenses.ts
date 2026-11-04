@@ -30,6 +30,7 @@ interface Expense {
   document_type: string | null;
   document_reference: string | null;
   amount: string;
+  competence: string | null;
   issue_date: string;
   due_date: string | null;
   payable_id: string | null;
@@ -242,6 +243,7 @@ interface Expense {
             <legend>Valores e datas</legend>
             <div class="expense-grid financial-fields">
               <label>Valor (R$)<input formControlName="amount" inputmode="decimal" maxlength="19" placeholder="0,00"></label>
+              <label>Competência<input type="month" formControlName="competence"></label>
               <label>Emissão<input type="date" formControlName="issue_date"></label>
               <label>Vencimento (opcional)<input type="date" formControlName="due_date"></label>
             </div>
@@ -302,9 +304,9 @@ interface Expense {
         @else {
           <div class="table-scroll">
             <table>
-              <thead><tr><th>Despesa</th><th>Categoria</th><th>Fornecedor e documento</th><th class="numeric">Valor</th><th>Vencimento</th></tr></thead>
+              <thead><tr><th>Despesa</th><th>Competência</th><th>Categoria</th><th>Fornecedor e documento</th><th class="numeric">Valor</th><th>Vencimento</th></tr></thead>
               <tbody>@for (expense of expenses(); track expense.id) {
-                <tr [class.linked-expense]="expense.id === selectedExpense"><td>{{expense.description}}</td><td>{{label(expense.category)}}</td>
+                <tr [class.linked-expense]="expense.id === selectedExpense"><td>{{expense.description}}</td><td>{{expense.competence ? expense.competence.slice(0, 7) : 'Não informada'}}</td><td>{{label(expense.category)}}</td>
                   <td>{{expense.supplier}} @if (expense.document_type) {
                     <small>{{documentLabel(expense.document_type)}} {{expense.document_reference}}</small>
                   }</td>
@@ -364,6 +366,7 @@ export class Expenses {
     frequency: ['once'],
     due_day: ['05'],
     amount: ['', [Validators.pattern(/^(?:0|[1-9]\d*)(?:[.,]\d{1,2})?$/)]],
+    competence: [today().slice(0, 7), Validators.required],
     issue_date: [today(), Validators.required],
     due_date: [''],
   });
@@ -379,7 +382,7 @@ export class Expenses {
     effect(() => {
       const company = this.workspaces.selected();
       untracked(() => {
-        this.form.reset({issue_date: today()});
+        this.form.reset({issue_date: today(), competence: today().slice(0, 7)});
         this.editingRule.set(null);
         this.ruleActionError.set('');
         this.supplierForm.reset();
@@ -485,7 +488,7 @@ export class Expenses {
   leaveRuleEdit(): void {
     this.editingRule.set(null);
     this.pending = null;
-    this.form.reset({issue_date: today()});
+    this.form.reset({issue_date: today(), competence: today().slice(0, 7)});
     this.section.set('rules');
   }
 
@@ -515,10 +518,10 @@ export class Expenses {
   }
 
   canSave(): boolean {
-    const {description, category, supplier_id, frequency, amount, issue_date} = this.form.getRawValue();
+    const {description, category, supplier_id, frequency, amount, issue_date, competence} = this.form.getRawValue();
     return !!(description.trim() && category && category !== 'PESSOAL' && supplier_id
       && (frequency === 'variable' || (amount && this.form.controls.amount.valid))
-      && (frequency !== 'once' || issue_date));
+      && (frequency !== 'once' || (issue_date && competence)));
   }
 
   async save(): Promise<void> {
@@ -550,7 +553,7 @@ export class Expenses {
     }
     const attempt = this.pending ?? {
       url: frequency === 'once' ? base : base + '/rules', key: crypto.randomUUID(),
-      body: frequency === 'once' ? {...value, amount, due_date: value.due_date || null,
+      body: frequency === 'once' ? {...value, competence: value.competence + '-01', amount, due_date: value.due_date || null,
         document_type: value.document_type || null, document_reference: value.document_reference.trim() || null}
         : {description: value.description, category: value.category, supplier_id: value.supplier_id,
           due_day: Number(due_day), fixed_amount: frequency === 'fixed' ? amount : null},
@@ -569,7 +572,7 @@ export class Expenses {
       }).pipe(timeout(15000)));
       this.pending = null;
       if (this.workspaces.selected()?.company_id === company.company_id) {
-        this.form.reset({issue_date: today()});
+        this.form.reset({issue_date: today(), competence: today().slice(0, 7)});
         this.message.set(attempt.url !== base ? 'Recorrência salva.' : expense.payable_id ? 'Despesa salva e título gerado em Contas a pagar.' : 'Despesa salva.');
         if (this.workspaces.can('payables.read')) await this.load(base);
       }

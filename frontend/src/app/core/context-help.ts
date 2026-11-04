@@ -2,6 +2,7 @@ import { Component, Injectable, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 export const helpGuides = [
+  {path: 'account', title: 'Minha conta', text: 'Confira seus dados pessoais e bancários. Para salvar alterações, confirme sua senha atual. O CPF registrado identifica o titular e fica protegido contra alteração nesta tela.'},
   {path: 'overview', title: 'Visão financeira', text: 'Os cartões mostram os saldos atuais. Use as datas para consultar baixas e estornos do período.'},
   {path: 'expenses', title: 'Despesas', text: 'Cadastre a cobrança com categoria e fornecedor. Informe o vencimento para gerar o título. Consulte os lançamentos e as recorrências nas abas da tela.'},
   {path: 'payables', title: 'Contas a pagar', text: 'Abra os detalhes para consultar o saldo, registrar uma baixa ou verificar a origem. Use Pagamentos do mês para consultar baixas e estornos.'},

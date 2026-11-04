@@ -15,6 +15,7 @@ interface BillingRow {
   invoice_reference: string | null;
 }
 
+interface Customer {id: string; name: string}
 interface Receipt {id: string; amount: string; received_on: string; reversed: boolean}
 interface Position {received: string; outstanding: string; receipts: Receipt[]}
 
@@ -26,7 +27,7 @@ interface Position {received: string; outstanding: string; receipts: Receipt[]}
     .billing-nav [aria-pressed="true"] { background: #e2edf9; color: #173762; }
     fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 1rem; }
     label { display: grid; gap: .4rem; margin: 0; min-width: 0; }
-    input { width: 100%; }
+    input, select { width: 100%; min-width: 0; }
     .billing-actions { display: flex; justify-content: flex-end; margin-top: 1rem; }
     .billing-actions button { background: linear-gradient(115deg, #173762, #27548d); }
   `,
@@ -41,6 +42,8 @@ interface Position {received: string; outstanding: string; receipts: Receipt[]}
         <button class="secondary" [disabled]="receiptBusy() || !!receiptKey" [attr.aria-pressed]="view() === 'register'" (click)="selected.set(null); view.set('register')">Novo faturamento</button>
         <button class="secondary" [disabled]="receiptBusy() || !!receiptKey" [attr.aria-pressed]="view() === 'billing'" (click)="selected.set(null); view.set('billing')">Faturamento registrado</button>
         <button class="secondary" [disabled]="receiptBusy() || !!receiptKey" [attr.aria-pressed]="view() === 'receivables'" (click)="selected.set(null); view.set('receivables')">Contas a receber</button>
+        <button class="secondary" [disabled]="receiptBusy() || !!receiptKey || !!pending || customerSaving()"
+          [attr.aria-pressed]="view() === 'customers'" (click)="selected.set(null); view.set('customers')">Clientes</button>
       </nav>
       @if (selected(); as row) {
         <section class="panel detail-panel register-list">
@@ -82,11 +85,38 @@ interface Position {received: string; outstanding: string; receipts: Receipt[]}
             }
           } @else if (receiptBusy()) { <p role="status">Consultando cobrança…</p> }
         </section>
+      } @else if (view() === 'customers') {
+        <section class="panel detail-panel">
+          <h2>Cadastrar cliente</h2>
+          <form [formGroup]="customerForm" (ngSubmit)="saveCustomer()">
+            <fieldset [disabled]="customerSaving() || !!customerPending">
+              <label>Nome ou razão social<input formControlName="name" maxlength="150"></label>
+            </fieldset>
+            <div class="billing-actions"><button class="primary" type="submit"
+              [disabled]="customerSaving() || customerForm.invalid">
+              {{customerPending ? 'Tentar novamente' : 'Cadastrar cliente'}}
+            </button></div>
+          </form>
+        </section>
+        <section class="panel detail-panel register-list">
+          <h2>Clientes cadastrados</h2>
+          @if (!customers().length) { <p class="muted">Nenhum cliente cadastrado nesta empresa.</p> }
+          @else {
+            <div class="table-scroll"><table><thead><tr><th>Nome ou razão social</th></tr></thead>
+              <tbody>@for (customer of customers(); track customer.id) { <tr><td>{{customer.name}}</td></tr> }</tbody>
+            </table></div>
+          }
+        </section>
       } @else if (view() === 'register') {
         <section class="panel detail-panel"><h2>Novo faturamento</h2>
           <form [formGroup]="form" (ngSubmit)="save()">
             <fieldset [disabled]="saving() || !!pending">
-              <label>Cliente<input formControlName="customer" maxlength="150"></label>
+              <label>Cliente<select formControlName="customer_id">
+                <option value="">Selecione um cliente</option>
+                @for (customer of customers(); track customer.id) {
+                  <option [value]="customer.id">{{customer.name}}</option>
+                }
+              </select></label>
               <label>Serviço prestado<input formControlName="service" maxlength="250"></label>
               <label>Competência<input type="month" formControlName="competence"></label>
               <label>Emissão<input type="date" formControlName="issue_date"></label>
@@ -129,12 +159,16 @@ export class Billing {
   private readonly api = inject(FinanceApi);
   readonly dateLabel = dateLabel;
   readonly money = money;
-  readonly view = signal<'register' | 'billing' | 'receivables'>('billing');
+  readonly view = signal<'register' | 'billing' | 'receivables' | 'customers'>('billing');
   readonly available = signal(false);
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly error = signal('');
   readonly message = signal('');
+  readonly customers = signal<Customer[]>([]);
+  readonly customerSaving = signal(false);
+  customerPending: {url: string; key: string; name: string} | null = null;
+  readonly customerForm = inject(FormBuilder).nonNullable.group({name: ['', Validators.required]});
   private readonly billings = signal<BillingRow[]>([]);
   private readonly receivables = signal<BillingRow[]>([]);
   readonly visibleRows = computed(() => this.view() === 'receivables' ? this.receivables() : this.billings());
@@ -155,7 +189,7 @@ export class Billing {
   });
 
   readonly form = inject(FormBuilder).nonNullable.group({
-    customer: ['', Validators.required], service: ['', Validators.required],
+    customer_id: ['', Validators.required], service: ['', Validators.required],
     competence: [today().slice(0, 7), Validators.required], issue_date: [today(), Validators.required],
     amount: ['', [Validators.required, Validators.pattern(/^(?:0|[1-9]\d*)(?:[.,]\d{1,2})?$/)]],
     due_date: [''], invoice_reference: [''],
@@ -168,6 +202,8 @@ export class Billing {
       this.selected.set(null);
       this.position.set(null);
       this.receiptKey = null;
+      this.customers.set([]);
+      if (!this.customerPending) this.customerForm.reset();
       this.available.set(false);
       this.error.set('');
       this.message.set('');
@@ -185,11 +221,13 @@ export class Billing {
   private async load(url: string, generation: number): Promise<void> {
     this.loading.set(true);
     try {
-      const [billings, receivables] = await Promise.all([
+      const [billings, receivables, customers] = await Promise.all([
         firstValueFrom(this.http.get<BillingRow[]>(url).pipe(timeout(15000))),
         firstValueFrom(this.http.get<BillingRow[]>(url, {params: {receivables: 'true'}}).pipe(timeout(15000))),
+        firstValueFrom(this.http.get<Customer[]>(url.replace(/billing$/, 'customers')).pipe(timeout(15000))),
       ]);
       if (generation === this.generation) {
+        this.customers.set(customers);
         this.billings.set(billings);
         this.receivables.set(receivables);
         this.available.set(true);
@@ -255,6 +293,40 @@ export class Billing {
       }
     } finally {
       this.receiptBusy.set(false);
+    }
+  }
+
+  async saveCustomer(): Promise<void> {
+    const base = this.url(), generation = this.generation;
+    const name = this.customerForm.getRawValue().name.trim();
+    if (!base || !name || !this.available() || this.customerSaving()) return;
+    const url = base.replace(/billing$/, 'customers');
+    const attempt = this.customerPending ?? {url, key: crypto.randomUUID(), name};
+    if (attempt.url !== url) {
+      this.error.set('Volte à empresa original para confirmar o cadastro pendente.');
+      return;
+    }
+    this.customerPending = attempt;
+    this.customerSaving.set(true);
+    this.error.set('');
+    this.message.set('');
+    try {
+      await firstValueFrom(this.http.post<Customer>(url, {name: attempt.name}, {
+        headers: {'Idempotency-Key': attempt.key},
+      }).pipe(timeout(15000)));
+      this.customerPending = null;
+      this.customerForm.reset();
+      if (generation === this.generation) {
+        this.message.set('Cliente cadastrado.');
+        await this.load(base, generation);
+      }
+    } catch (failure) {
+      const status = (failure as {status?: number})?.status;
+      if (status && status >= 400 && status < 500) this.customerPending = null;
+      if (generation === this.generation) this.error.set(this.customerPending
+        ? 'Envio sem confirmação. Tente novamente.' : 'Não foi possível cadastrar o cliente.');
+    } finally {
+      this.customerSaving.set(false);
     }
   }
 

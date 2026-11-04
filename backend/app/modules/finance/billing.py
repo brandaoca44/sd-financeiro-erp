@@ -20,12 +20,37 @@ from app.modules.identity.permissions import PermissionKey
 from app.modules.organizations.models import Company
 
 
-class ServiceBilling(Base):
-    __tablename__ = "service_billings"
-    __table_args__ = (scope_company("fk_service_billings_company"),)
+class Customer(Base):
+    __tablename__ = "billing_customers"
+    __table_args__ = (scope_company("fk_billing_customers_company"),)
     organization_id = mapped_column(Uuid, primary_key=True)
     company_id = mapped_column(Uuid, primary_key=True)
     id = mapped_column(Uuid, primary_key=True)
+    name = mapped_column(String(150), nullable=False)
+
+
+class CustomerInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
+
+
+class CustomerRow(CustomerInput):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+
+
+class ServiceBilling(Base):
+    __tablename__ = "service_billings"
+    __table_args__ = (
+        scope_company("fk_service_billings_company"),
+        ForeignKeyConstraint(["organization_id", "company_id", "customer_id"],
+                             ["billing_customers.organization_id", "billing_customers.company_id", "billing_customers.id"],
+                             name="fk_service_billings_customer", ondelete="RESTRICT"),
+    )
+    organization_id = mapped_column(Uuid, primary_key=True)
+    company_id = mapped_column(Uuid, primary_key=True)
+    id = mapped_column(Uuid, primary_key=True)
+    customer_id = mapped_column(Uuid, nullable=True)
     customer = mapped_column(String(150), nullable=False)
     service = mapped_column(String(250), nullable=False)
     competence = mapped_column(Date, nullable=False)
@@ -71,7 +96,8 @@ class BillingPosition(BaseModel):
 
 class BillingInput(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
-    customer: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
+    customer: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)] | None = None
+    customer_id: UUID | None = None
     service: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=250)]
     competence: CalendarDate
     issue_date: CalendarDate
@@ -106,6 +132,8 @@ router = APIRouter(prefix="/organizations/{organization_id}/companies/{company_i
 async def register_billing(organization_id: UUID, company_id: UUID, data: BillingInput, request: Request,
                            request_id: UUID = Header(alias="Idempotency-Key"),
                            current=Depends(get_current_session), token=Depends(get_session_token)):
+    if (data.customer_id is None) == (data.customer is None):
+        raise HTTPException(422, "Selecione um cliente.")
     async with writer(request, current.user_id) as service:
         async with service.session.begin():
             actor = await service._authorize_write(organization_id, company_id, token)
@@ -113,6 +141,11 @@ async def register_billing(organization_id: UUID, company_id: UUID, data: Billin
                 service.deny()
             row = await service.session.get(ServiceBilling, (organization_id, company_id, request_id))
             values = data.model_dump()
+            if data.customer_id is not None:
+                customer = await service.session.get(Customer, (organization_id, company_id, data.customer_id))
+                if customer is None:
+                    service.deny()
+                values["customer"] = row.customer if row is not None else customer.name
             if row is None:
                 row = ServiceBilling(organization_id=organization_id, company_id=company_id, id=request_id, **values)
                 service.session.add(row)
@@ -213,3 +246,44 @@ async def reverse_receipt(organization_id: UUID, company_id: UUID, billing_id: U
         if row is None:
             service.deny()
         row.reversed = True
+
+
+customers_router = APIRouter(
+    prefix="/organizations/{organization_id}/companies/{company_id}/customers", tags=["Clientes"],
+)
+
+
+@customers_router.get("", response_model=list[CustomerRow])
+async def list_customers(organization_id: UUID, company_id: UUID, request: Request,
+                         current=Depends(get_current_session), token=Depends(get_session_token)):
+    async with request.app.state.session_factory() as session:
+        visible = select(Company.id).where(
+            Company.organization_id == organization_id, Company.id == company_id,
+            owner_condition(current.user_id, organization_id),
+            CompanyAccessPolicy(session).financial_visibility(current.user_id, organization_id, PermissionKey.PAYABLES_READ),
+        ).exists()
+        if not await session.scalar(select(visible)):
+            raise HTTPException(404, "Cadastro de clientes indisponível.")
+        rows = await session.scalars(select(Customer).where(
+            Customer.organization_id == organization_id, Customer.company_id == company_id, visible,
+        ).order_by(Customer.name, Customer.id))
+        result = [CustomerRow.model_validate(row) for row in rows]
+    await record_authorized_activity(request, token)
+    return result
+
+
+@customers_router.post("", response_model=CustomerRow, status_code=201)
+async def create_customer(organization_id: UUID, company_id: UUID, data: CustomerInput, request: Request,
+                          request_id: UUID = Header(alias="Idempotency-Key"),
+                          current=Depends(get_current_session), token=Depends(get_session_token)):
+    async with writer(request, current.user_id) as service, service.session.begin():
+        actor = await service._authorize_write(organization_id, company_id, token)
+        if not await service.session.scalar(select(owner_condition(actor, organization_id))):
+            service.deny()
+        row = await service.session.get(Customer, (organization_id, company_id, request_id))
+        if row is None:
+            row = Customer(organization_id=organization_id, company_id=company_id, id=request_id, name=data.name)
+            service.session.add(row)
+        elif row.name != data.name:
+            raise PayableConflictError()
+        return CustomerRow.model_validate(row)

@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 from sqlalchemy import Boolean, Date, ForeignKeyConstraint, Numeric, String, UniqueConstraint, Uuid, and_, case, func, select
 from sqlalchemy.orm import aliased, mapped_column
 
@@ -73,6 +73,7 @@ class Expense(Base):
     document_reference = mapped_column(String(100), nullable=True)
     amount = mapped_column(Numeric, nullable=False)
     issue_date = mapped_column(Date, nullable=False)
+    competence = mapped_column(Date, nullable=True)
     due_date = mapped_column(Date, nullable=True)
 
 
@@ -85,6 +86,15 @@ class ExpenseCreate(BaseModel):
     document_type: Literal["BOLETO", "NOTA_FISCAL", "OUTRO"] | None = None
     document_reference: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)] | None = None
     amount: Money
+    competence: CalendarDate | None = None
+
+    @field_validator("competence")
+    @classmethod
+    def validate_competence(cls, value):
+        if value is not None and value.day != 1:
+            raise ValueError("Informe o primeiro dia do mês de competência.")
+        return value
+
     issue_date: CalendarDate
     due_date: CalendarDate | None = None
 

@@ -16,6 +16,7 @@ from app.database.base import Base
 from app.modules.finance.schemas import Money
 from app.modules.people.payroll_preview import estimate_clt_2026
 from app.modules.identity.account_security import RegisterRequest
+from app.modules.identity.pix import PixDetails, normalize_passport
 from app.modules.identity.access_models import OrganizationOwnership
 from app.modules.identity.company_authorization import CompanyAccessPolicy
 from app.modules.organizations.models import Company, CompanyStatus, Organization
@@ -55,7 +56,7 @@ ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1
 LongText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=250)]
 
 
-class PrivateDetails(BaseModel):
+class PrivateDetails(PixDetails):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     monthly_compensation: Money | None = None
     cpf: Annotated[str, StringConstraints(pattern=r"^\d{11}$")] | None = None
@@ -74,6 +75,11 @@ class PrivateDetails(BaseModel):
 
 
 class RequiredPrivateDetails(PrivateDetails):
+    @field_validator("passport")
+    @classmethod
+    def validate_passport(cls, value):
+        return normalize_passport(value)
+
     rg: Annotated[str, StringConstraints(pattern=r"^[0-9]{1,80}$")] | None = None
     cnh: Annotated[str, StringConstraints(pattern=r"^[0-9]{11}$")] | None = None
     cpf: Annotated[str, StringConstraints(pattern=r"^[0-9]{11}$")]
