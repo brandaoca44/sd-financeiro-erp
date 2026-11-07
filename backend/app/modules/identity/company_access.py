@@ -10,7 +10,7 @@ from app.modules.identity.company_access_models import CompanyPermissionChange, 
 from app.modules.identity.company_access_schemas import CompanyReadGrantResponse, CompanyFinancialGrantResponse
 from app.modules.identity.company_authorization import CompanyAccessPolicy
 from app.modules.identity.models import MembershipStatus, OrganizationMembership, UserStatus
-from app.modules.identity.permissions import PermissionKey, FINANCIAL_PERMISSIONS
+from app.modules.identity.permissions import PermissionKey, COMPANY_PERMISSIONS
 from app.modules.organizations.models import Company, CompanyStatus
 
 
@@ -38,8 +38,8 @@ class CompanyGrantService:
 
     async def _response(self, organization_id, company, member, grant):
         policy = CompanyAccessPolicy(self.session)
-        if grant.permission_key in FINANCIAL_PERMISSIONS:
-            effective = await policy.has_financial_permission(member.user_id, organization_id, company.id, grant.permission_key, grant_only=True)
+        if grant.permission_key in COMPANY_PERMISSIONS:
+            effective = await policy.has_operation_permission(member.user_id, organization_id, company.id, grant.permission_key, grant_only=True)
             response = CompanyFinancialGrantResponse
         else:
             effective = await policy.can_read(member.user_id, organization_id, company.id, grant_only=True)
@@ -48,7 +48,7 @@ class CompanyGrantService:
             revision=grant.revision, company_revision=company.revision, membership_revision=member.revision, effective=effective)
 
     async def read(self, organization_id, company_id, user_id, actor_id, *, permission_key=PermissionKey.COMPANIES_READ):
-        if permission_key not in FINANCIAL_PERMISSIONS and permission_key != PermissionKey.COMPANIES_READ:
+        if permission_key not in COMPANY_PERMISSIONS and permission_key != PermissionKey.COMPANIES_READ:
             self.deny()
         if not await OrganizationAccessPolicy(self.session).has_permission(actor_id, organization_id, PermissionKey.COMPANY_ACCESS_MANAGE):
             self.deny()
@@ -60,7 +60,7 @@ class CompanyGrantService:
         return None if grant is None else await self._response(organization_id, company, member, grant)
 
     async def set_read(self, organization_id, company_id, user_id, data, *, token, permission_key=PermissionKey.COMPANIES_READ):
-        if permission_key not in FINANCIAL_PERMISSIONS and permission_key != PermissionKey.COMPANIES_READ:
+        if permission_key not in COMPANY_PERMISSIONS and permission_key != PermissionKey.COMPANIES_READ:
             self.deny()
         async with self.session.begin():
             actor_id, owner, users, members, _ = await authorize_access_change(self.session,

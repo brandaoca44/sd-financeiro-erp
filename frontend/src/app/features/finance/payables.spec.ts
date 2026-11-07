@@ -1,3 +1,4 @@
+import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
@@ -12,7 +13,7 @@ describe('Operações financeiras no cliente',()=>{
   const workspace:Workspace={organization_id:'00000000-0000-0000-0000-000000000001',company_id:'00000000-0000-0000-0000-000000000002',company_name:'Empresa sintética',permissions:['payables.read','payables.manage','payables.settle','payables.reverse']};
   const title:Title={id:'00000000-0000-0000-0000-000000000003',description:'Despesa sintética',amount:'100.00',issue_date:'2026-11-01',due_date:'2026-11-10',revision:1,status:'OPEN'};
   let api:{revision:ReturnType<typeof signal<number>>;titles:ReturnType<typeof vi.fn>;write:ReturnType<typeof vi.fn>};
-  beforeEach(()=>{api={revision:signal(0),titles:vi.fn().mockResolvedValue({items:[],next_cursor:null}),write:vi.fn()};TestBed.configureTestingModule({imports:[Payables],providers:[provideHttpClient(),provideHttpClientTesting(),{provide:FinanceApi,useValue:api}]});TestBed.inject(Session).token.set('token');TestBed.inject(Workspaces).items.set([workspace]);TestBed.inject(Workspaces).selected.set(workspace);});
+  beforeEach(()=>{api={revision:signal(0),titles:vi.fn().mockResolvedValue({items:[],next_cursor:null}),write:vi.fn()};TestBed.configureTestingModule({imports:[Payables],providers:[provideRouter([]),provideHttpClient(),provideHttpClientTesting(),{provide:FinanceApi,useValue:api}]});TestBed.inject(Session).token.set('token');TestBed.inject(Workspaces).items.set([workspace]);TestBed.inject(Workspaces).selected.set(workspace);});
   it('reutiliza a mesma chave e payload após resultado desconhecido',async()=>{
     const fixture=TestBed.createComponent(Payables);fixture.detectChanges();const component=fixture.componentInstance;
     component.open('pay',title);component.form.patchValue({amount:'40,00',occurred_on:'2026-11-02'});api.write.mockRejectedValueOnce(new HttpErrorResponse({status:0}));await component.submit();expect(component.pending()).not.toBeNull();

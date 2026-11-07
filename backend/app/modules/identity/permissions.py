@@ -19,6 +19,20 @@ class PermissionKey(StrEnum):
     PAYABLES_SETTLE = "payables.settle"
     PAYABLES_REVERSE = "payables.reverse"
 
+    BILLING_READ = "billing.read"
+    BILLING_MANAGE = "billing.manage"
+    BILLING_RECEIVE = "billing.receive"
+    BILLING_REVERSE = "billing.reverse"
+    PEOPLE_READ = "people.read"
+    PEOPLE_CREATE = "people.create"
+    PEOPLE_UPDATE = "people.update"
+    PEOPLE_TERMINATE = "people.terminate"
+    PEOPLE_DOCUMENTS = "people.documents"
+    PEOPLE_COMPENSATION = "people.compensation"
+    PEOPLE_BANK = "people.bank"
+    ACCOUNTS_READ = "accounts.read"
+    ACCOUNTS_MANAGE = "accounts.manage"
+    ACCOUNTS_BANK = "accounts.bank"
 
 class FinancialPermissionKey(StrEnum):
     READ = "payables.read"
@@ -59,4 +73,48 @@ PERMISSION_CATALOG += tuple({"key": key, "description": description,
     (PermissionKey.PAYABLES_MANAGE, "Criar, editar e cancelar títulos de contas a pagar"),
     (PermissionKey.PAYABLES_SETTLE, "Registrar baixa manual de contas a pagar"),
     (PermissionKey.PAYABLES_REVERSE, "Estornar baixa de contas a pagar"),
+))
+
+
+class CompanyPermissionKey(StrEnum):
+    PAYABLES_READ = "payables.read"
+    PAYABLES_MANAGE = "payables.manage"
+    PAYABLES_SETTLE = "payables.settle"
+    PAYABLES_REVERSE = "payables.reverse"
+    BILLING_READ = "billing.read"
+    BILLING_MANAGE = "billing.manage"
+    BILLING_RECEIVE = "billing.receive"
+    BILLING_REVERSE = "billing.reverse"
+    PEOPLE_READ = "people.read"
+    PEOPLE_CREATE = "people.create"
+    PEOPLE_UPDATE = "people.update"
+    PEOPLE_TERMINATE = "people.terminate"
+    PEOPLE_DOCUMENTS = "people.documents"
+    PEOPLE_COMPENSATION = "people.compensation"
+    PEOPLE_BANK = "people.bank"
+    ACCOUNTS_READ = "accounts.read"
+    ACCOUNTS_MANAGE = "accounts.manage"
+    ACCOUNTS_BANK = "accounts.bank"
+
+COMPANY_PERMISSIONS = frozenset(CompanyPermissionKey)
+PERMISSION_CATALOG += tuple({"key": key, "description": description, "scope": "COMPANY",
+    "grant_source": "OWNER_OR_COMPANY_GRANT"} for key, description in (
+    (PermissionKey.BILLING_READ, "Consultar faturamento e cobranças"),
+    (PermissionKey.BILLING_MANAGE, "Cadastrar clientes e faturamento"),
+    (PermissionKey.BILLING_RECEIVE, "Registrar recebimentos"),
+    (PermissionKey.BILLING_REVERSE, "Estornar recebimentos"),
+    (PermissionKey.PEOPLE_READ, "Consultar cadastro profissional de colaboradores"),
+    (PermissionKey.PEOPLE_CREATE, "Cadastrar colaboradores"),
+    (PermissionKey.PEOPLE_UPDATE, "Editar colaboradores"),
+    (PermissionKey.PEOPLE_TERMINATE, "Registrar desligamentos"),
+    (PermissionKey.PEOPLE_DOCUMENTS, "Acessar documentos e dados pessoais de colaboradores"),
+    (PermissionKey.PEOPLE_COMPENSATION, "Acessar remuneração de colaboradores"),
+    (PermissionKey.PEOPLE_BANK, "Acessar dados bancários e Pix de colaboradores"),
+))
+
+PERMISSION_CATALOG += tuple({"key": key, "description": description, "scope": "COMPANY",
+    "grant_source": "OWNER_OR_COMPANY_GRANT"} for key, description in (
+    (PermissionKey.ACCOUNTS_READ, "Consultar contas financeiras e posições iniciais"),
+    (PermissionKey.ACCOUNTS_MANAGE, "Cadastrar, editar e inativar contas financeiras"),
+    (PermissionKey.ACCOUNTS_BANK, "Acessar dados bancários das contas da empresa"),
 ))

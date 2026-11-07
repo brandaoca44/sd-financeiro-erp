@@ -84,7 +84,7 @@ class AuthenticationHttpTests(DatabaseTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()["access_token"]
 
-    async def test_login_returns_only_token_type_and_idle_deadline_without_cookie(self):
+    async def test_login_returns_only_token_type_and_idle_deadline_without_persistent_cookie(self):
         user = await self._user()
         response = await self._login(user)
         self.assertEqual(response.status_code, 200)
@@ -92,7 +92,11 @@ class AuthenticationHttpTests(DatabaseTestCase):
         self.assertEqual(response.json()["token_type"], "bearer")
         self.assertEqual(len(response.json()["access_token"]), 43)
         self.assertEqual(response.headers["cache-control"], "no-store")
-        self.assertNotIn("set-cookie", response.headers)
+        # Login clears any remembered session; it never persists the new bearer token.
+        cookie = response.headers.get("set-cookie", "")
+        self.assertIn('sdf_remember_session=""', cookie)
+        self.assertIn("Max-Age=0", cookie)
+        self.assertNotIn(response.json()["access_token"], cookie)
         self.assertNotIn(self.password, response.text)
         self.assertNotIn(user.email, response.text)
 

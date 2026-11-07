@@ -1,3 +1,4 @@
+import { RecurringOccurrences } from './recurring-occurrences';
 import { ContextHelp } from '../../core/context-help';
 import { HttpClient } from '@angular/common/http';
 import { Component, effect, inject, signal, untracked } from '@angular/core';
@@ -13,6 +14,8 @@ const categories = [
 ];
 
 interface ExpenseRule {
+  automation_enabled: boolean;
+  next_month: string;
   supplier_id: string;
   cancelled: boolean;
   id: string;
@@ -22,7 +25,13 @@ interface ExpenseRule {
   fixed_amount: string | null;
 }
 
+interface ExpenseHistory {id: string; action: string; created_at: string; changed_fields: string[]}
+
 interface Expense {
+  revision: number;
+  payable_revision: number | null;
+  status: 'OPEN' | 'CANCELLED';
+  supplier_id: string | null;
   id: string;
   description: string;
   category: string;
@@ -38,7 +47,7 @@ interface Expense {
 
 @Component({
   selector: 'sdf-expenses',
-  imports: [ReactiveFormsModule, RouterLink, ContextHelp],
+  imports: [ReactiveFormsModule, RouterLink, ContextHelp, RecurringOccurrences],
   styles: `
     .panel-heading { justify-content: flex-start; align-items: center; flex-wrap: wrap; gap: .75rem 1.25rem; }
     .panel-heading p { margin: .35rem 0 0; }
@@ -85,6 +94,7 @@ interface Expense {
       gap: 1rem;
       align-items: start;
     }
+    .expense-layout.expense-editing { grid-template-columns: minmax(0, 1fr); }
     .expense-preview { background: linear-gradient(145deg, #fff, #f0f5fb); }
     .expense-preview p { margin-bottom: .5rem; }
     @media (min-width: 1100px) {
@@ -133,6 +143,7 @@ interface Expense {
     .expense-actions .secondary { background: transparent; border-color: #d6e0ed; }
     .expense-actions .secondary:hover { background: #edf3fa; }
     .expense-actions .primary { padding-inline: 1.25rem; }
+    .expense-row-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
     .document-field { position: relative; min-width: 0; }
     .field-caption { display: flex; align-items: center; gap: .4rem; margin-bottom: .4rem; }
     .linked-expense td { background: #eaf1fa; }
@@ -147,7 +158,7 @@ interface Expense {
       <p class="muted">Classifique os gastos da empresa e vincule os documentos de origem.</p></div></div>
 
 
-    @if (!editingRule()) {
+    @if (!editingRule() && !editingExpense()) {
     <nav class="expense-tabs" aria-label="Seções de despesas">
       @if (workspaces.can('payables.manage')) {
         <button type="button" [attr.aria-pressed]="activeSection() === 'create'" (click)="editingRule() ? leaveRuleEdit() : null; section.set('create')">Nova despesa</button>
@@ -159,10 +170,10 @@ interface Expense {
     </nav>
     }
     @if (workspaces.can('payables.manage') && activeSection() === 'create') {
-      <div class="expense-layout">
+      <div class="expense-layout" [class.expense-editing]="!!editingExpense()">
       <section class="panel detail-panel expense-entry">
         <div class="panel-heading">
-          <div><h2>{{editingRule() ? 'Editar recorrência' : 'Nova despesa'}}</h2><p class="muted">Informe a origem e os dados financeiros do lançamento.</p></div>
+          <div><h2>{{editingExpense() ? 'Editar despesa' : editingRule() ? 'Editar recorrência' : 'Nova despesa'}}</h2><p class="muted">Informe a origem e os dados financeiros do lançamento.</p></div>
           <button [hidden]="showSupplier()" class="secondary" type="button" (click)="showSupplier.set(true)"
             [attr.aria-expanded]="showSupplier()" aria-controls="supplier-editor">
             Cadastrar fornecedor
@@ -190,12 +201,16 @@ interface Expense {
               </select></label>
               <label>Fornecedor<select formControlName="supplier_id">
                 <option value="">Selecione um fornecedor</option>
+                @if (editingExpense(); as original) {
+                  @if (!original.supplier_id) { <option value="__legacy__">{{original.supplier}} (cadastro anterior)</option> }
+                }
                 @for (supplier of suppliers(); track supplier.id) {
                   <option [value]="supplier.id">{{supplier.name}}</option>
                 }
               </select></label>
             </div>
           </fieldset>
+          @if (!editingExpense()) {
           <fieldset [disabled]="saving() || pending !== null">
             <legend>Frequência</legend>
             <label>Tipo de lançamento<select formControlName="frequency">
@@ -204,6 +219,7 @@ interface Expense {
               <option value="variable">Mensal com valor variável</option>
             </select></label>
           </fieldset>
+          }
           @if (!recurring()) {
           <fieldset [disabled]="saving() || pending !== null">
             <legend>Comprovante (opcional)</legend>
@@ -236,7 +252,7 @@ interface Expense {
                 <label>Valor mensal (R$)<input formControlName="amount" inputmode="decimal" maxlength="19"></label>
               }
             </div>
-            <p class="muted">O cadastro salva a recorrência. A geração mensal ainda não está ativa.</p>
+            <p class="muted">A geração começa na competência atual, em até um minuto. Valores variáveis ficam aguardando revisão.</p>
           </fieldset>
           } @else {
           <fieldset [disabled]="saving() || pending !== null">
@@ -253,20 +269,24 @@ interface Expense {
           @if (message()) { <p class="notice" role="status">{{message()}}</p> }
           @if (error()) { <p class="alert" role="alert">{{error()}}</p> }
           <div class="expense-actions">
-            @if (editingRule()) { <button class="secondary" type="button" (click)="leaveRuleEdit()" [disabled]="saving()">Voltar</button> }
+            @if (editingRule() || editingExpense()) { <button class="secondary" type="button" (click)="leaveEdit()" [disabled]="saving()">Voltar</button> }
             <button class="primary" type="submit" [disabled]="saving() || (!pending && !canSave())">
-            {{saving() ? 'Salvando…' : pending ? 'Tentar novamente' : editingRule() ? 'Salvar alterações' : 'Registrar operação'}}
+            {{saving() ? 'Salvando…' : pending ? 'Tentar novamente' : editingRule() || editingExpense() ? 'Salvar alterações' : 'Registrar operação'}}
           </button></div>
         </form>
       </section>
+      @if (!editingExpense()) {
       <aside class="panel detail-panel expense-preview" aria-labelledby="expense-preview-title">
         <h2 id="expense-preview-title">Resumo do lançamento</h2>
         <p><strong>Categoria</strong><br>{{form.controls.category.value ? label(form.controls.category.value) : 'A selecionar'}}</p>
-        <p><strong>Vencimento</strong><br>{{form.controls.due_date.value ? dateLabel(form.controls.due_date.value) : 'Sem vencimento'}}</p>
-        <p class="muted">{{form.controls.due_date.value
-          ? 'Ao salvar, será gerado um título em Contas a pagar.'
+        <p><strong>Vencimento</strong><br>{{recurring() ? 'Todo dia ' + form.controls.due_day.value : form.controls.due_date.value ? dateLabel(form.controls.due_date.value) : 'Sem vencimento'}}</p>
+        <p class="muted">{{recurring() ? form.controls.frequency.value === 'fixed'
+          ? 'A despesa e a conta a pagar serão geradas mensalmente com o valor configurado.'
+          : 'A cobrança mensal ficará aguardando a confirmação do valor e do vencimento.'
+          : form.controls.due_date.value ? 'Ao salvar, será gerado um título em Contas a pagar.'
           : 'Sem vencimento, será registrada somente a despesa.'}}</p>
       </aside>
+      }
       </div>
     }
     @if (workspaces.can('payables.read') && activeSection() === 'rules') {
@@ -279,32 +299,62 @@ interface Expense {
         @else if (!rules().length) { <p class="muted">Nenhuma recorrência cadastrada nesta empresa.</p> }
         @else {
           <div class="table-scroll"><table>
-            <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento mensal</th><th class="numeric">Valor</th><th>Situação</th><th>Ações</th></tr></thead>
+            <thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento mensal</th><th class="numeric">Valor</th><th>Geração mensal</th><th>Situação</th><th>Ações</th></tr></thead>
             <tbody>@for (rule of rules(); track rule.id) {
               <tr><td>{{rule.description}}</td><td>{{label(rule.category)}}</td>
                 <td>Dia {{rule.due_day}}</td>
                 <td class="numeric">{{rule.fixed_amount === null ? 'Variável' : money(rule.fixed_amount)}}</td>
+                <td>{{rule.automation_enabled ? 'Próxima competência ' + rule.next_month.slice(0,7) : 'Aguardando ativação'}}</td>
                 <td>{{rule.cancelled ? 'Cancelada' : 'Ativa'}}</td>
                 <td>@if (!rule.cancelled && workspaces.can('payables.manage')) {
-                  <button class="text-button" type="button" (click)="editRule(rule)" [disabled]="saving() || !!pending">Editar</button>
+                  <button class="text-button" type="button" (click)="editRule(rule)" [disabled]="saving() || !!pending">{{rule.automation_enabled ? 'Editar' : 'Ativar geração'}}</button>
                   <button class="text-button danger-text" type="button" (click)="cancelRule(rule)" [disabled]="saving()">Cancelar</button>
                 }</td></tr>
             }</tbody>
           </table></div>
         }
       </section>
+      <sdf-recurring-occurrences />
     }
     @if (workspaces.can('payables.read') && activeSection() === 'expenses') {
       <section class="panel detail-panel register-list">
-        <h2>{{selectedExpense ? 'Despesa vinculada' : 'Despesas registradas'}}</h2>
+        <div class="panel-heading">
+          <h2>{{selectedExpense ? 'Despesa vinculada' : 'Despesas registradas'}}</h2>
+          <button class="secondary small" type="button" (click)="refreshExpenses()" [disabled]="saving() || loading()">Atualizar</button>
+        </div>
+        @if (message()) { <p class="notice" role="status">{{message()}}</p> }
         @if (selectedExpense) { <p><a class="secondary small" routerLink="." [queryParams]="{view:'registered'}">Ver todas as despesas</a></p> }
         @if (error()) { <p role="alert">{{error()}}</p> }
+        @if (cancellingExpense(); as expense) {
+          <h3>Cancelar despesa</h3><p>{{expense.description}} · {{money(expense.amount)}}</p>
+          <p class="muted">O título vinculado também será cancelado. Se houver valor pago, estorne a baixa antes de cancelar.</p>
+          <div class="expense-actions">
+            <button class="secondary" type="button" (click)="cancellingExpense.set(null)" [disabled]="saving()">Voltar</button>
+            <button class="primary" type="button" (click)="confirmExpenseCancellation()" [disabled]="saving()">
+              {{saving() ? 'Cancelando…' : 'Confirmar cancelamento'}}
+            </button>
+          </div>
+        } @else if (historyExpense(); as expense) {
+          <div class="panel-heading"><h3>Histórico de {{expense.description}}</h3>
+            <button class="secondary small" type="button" (click)="historyExpense.set(null)">Voltar à lista</button>
+          </div>
+          @if (historyLoading()) { <p role="status">Consultando histórico…</p> }
+          @else if (historyError()) { <p class="alert" role="alert">Não foi possível consultar o histórico.</p> }
+          @else if (!historyItems().length) { <p class="muted">Não há alterações registradas desde a implantação deste histórico.</p> }
+          @else {
+            <div class="table-scroll"><table><thead><tr><th>Data</th><th>Operação</th><th>Campos alterados</th></tr></thead>
+              <tbody>@for (item of historyItems(); track item.id) {
+                <tr><td>{{historyDate(item.created_at)}}</td><td>{{historyAction(item.action)}}</td>
+                  <td>{{historyFields(item.changed_fields)}}</td></tr>
+              }</tbody></table></div>
+          }
+        } @else {
         @if (loading()) { <p>Carregando despesas…</p> }
         @else if (expenses().length === 0) { <p class="muted">Nenhuma despesa para exibir.</p> }
         @else {
           <div class="table-scroll">
             <table>
-              <thead><tr><th>Despesa</th><th>Competência</th><th>Categoria</th><th>Fornecedor e documento</th><th class="numeric">Valor</th><th>Vencimento</th></tr></thead>
+              <thead><tr><th>Despesa</th><th>Competência</th><th>Categoria</th><th>Fornecedor e documento</th><th class="numeric">Valor</th><th>Vencimento</th><th>Situação</th><th>Ações</th></tr></thead>
               <tbody>@for (expense of expenses(); track expense.id) {
                 <tr [class.linked-expense]="expense.id === selectedExpense"><td>{{expense.description}}</td><td>{{expense.competence ? expense.competence.slice(0, 7) : 'Não informada'}}</td><td>{{label(expense.category)}}</td>
                   <td>{{expense.supplier}} @if (expense.document_type) {
@@ -313,10 +363,19 @@ interface Expense {
                   <td class="numeric">{{money(expense.amount)}}</td>
                   <td>@if (expense.payable_id && expense.due_date) {
                     {{dateLabel(expense.due_date)}} <a routerLink="../payables">Contas a pagar</a>
-                  } @else { — }</td></tr>
+                  } @else { — }</td>
+                  <td><span class="badge" [class.cancelled]="expense.status === 'CANCELLED'">{{expense.status === 'CANCELLED' ? 'Cancelada' : 'Ativa'}}</span></td>
+                  <td><div class="expense-row-actions">
+                    <button class="secondary small" type="button" (click)="showHistory(expense)" [disabled]="saving()">Histórico</button>
+                    @if (expense.status === 'OPEN' && workspaces.can('payables.manage')) {
+                      <button class="secondary small" type="button" (click)="editExpense(expense)" [disabled]="saving() || !!pending">Editar</button>
+                      <button class="secondary small danger-text" type="button" (click)="cancellingExpense.set(expense)" [disabled]="saving() || !!pending">Cancelar</button>
+                    }
+                  </div></td></tr>
               }</tbody>
             </table>
           </div>
+        }
         }
       </section>
     }
@@ -332,13 +391,20 @@ export class Expenses {
   private readonly route = inject(ActivatedRoute);
   selectedExpense = this.route.snapshot.queryParamMap.get('expense');
   readonly section = signal<'create' | 'expenses' | 'rules'>(
-    this.route.snapshot.queryParamMap.get('view') === 'registered' ? 'expenses' : 'create',
+    this.route.snapshot.queryParamMap.get('view') === 'registered' ? 'expenses' : this.route.snapshot.queryParamMap.get('view') === 'rules' ? 'rules' : 'create',
   );
 
   activeSection(): 'create' | 'expenses' | 'rules' {
     return this.section() === 'create' && !this.workspaces.can('payables.manage') ? 'expenses' : this.section();
   }
 
+  readonly editingExpense = signal<Expense | null>(null);
+  readonly cancellingExpense = signal<Expense | null>(null);
+  readonly historyExpense = signal<Expense | null>(null);
+  readonly historyItems = signal<ExpenseHistory[]>([]);
+  readonly historyLoading = signal(false);
+  readonly historyError = signal(false);
+  private historyGeneration = 0;
   readonly editingRule = signal<ExpenseRule | null>(null);
   readonly ruleActionError = signal('');
   readonly rules = signal<ExpenseRule[]>([]);
@@ -373,6 +439,14 @@ export class Expenses {
 
   constructor() {
     this.route.queryParamMap.subscribe(params => {
+      if (params.get('view') === 'registered' || params.get('view') === 'rules') {
+        this.editingExpense.set(null);
+        this.editingRule.set(null);
+        this.cancellingExpense.set(null);
+        this.historyExpense.set(null);
+      }
+      if (params.get('view') === 'registered') this.section.set('expenses');
+      if (params.get('view') === 'rules') this.section.set('rules');
       const next = params.get('expense');
       if (next === this.selectedExpense) return;
       this.selectedExpense = next;
@@ -384,6 +458,11 @@ export class Expenses {
       untracked(() => {
         this.form.reset({issue_date: today(), competence: today().slice(0, 7)});
         this.editingRule.set(null);
+        this.editingExpense.set(null);
+        this.cancellingExpense.set(null);
+        this.historyExpense.set(null);
+        this.historyItems.set([]);
+        this.historyGeneration++;
         this.ruleActionError.set('');
         this.supplierForm.reset();
         this.showSupplier.set(false);
@@ -473,7 +552,90 @@ export class Expenses {
     }
   }
 
+  refreshExpenses(): void {
+    const company = this.workspaces.selected();
+    this.cancellingExpense.set(null);
+    this.historyExpense.set(null);
+    this.error.set('');
+    this.message.set('');
+    if (company && this.workspaces.can('payables.read')) void this.load(this.url(company));
+  }
+
+  editExpense(expense: Expense): void {
+    this.editingRule.set(null);
+    this.editingExpense.set(expense);
+    this.error.set('');
+    this.message.set('');
+    this.form.reset({
+      description: expense.description, category: expense.category,
+      supplier_id: expense.supplier_id ?? '__legacy__', amount: expense.amount,
+      competence: expense.competence?.slice(0, 7) ?? '', issue_date: expense.issue_date,
+      due_date: expense.due_date ?? '', frequency: 'once', due_day: '05',
+      document_type: expense.document_type ?? '', document_reference: expense.document_reference ?? '',
+    });
+    this.section.set('create');
+  }
+
+  leaveEdit(): void {
+    if (this.editingRule()) { this.leaveRuleEdit(); return; }
+    this.editingExpense.set(null);
+    this.form.reset({issue_date: today(), competence: today().slice(0, 7)});
+    this.error.set('');
+    this.section.set('expenses');
+  }
+
+  async confirmExpenseCancellation(): Promise<void> {
+    const expense = this.cancellingExpense(), company = this.workspaces.selected();
+    if (!expense || !company || this.saving() || !this.workspaces.can('payables.manage')) return;
+    const url = this.url(company);
+    this.saving.set(true);
+    this.error.set('');
+    try {
+      await firstValueFrom(this.http.post(url + '/' + expense.id + '/cancel', {
+        expected_revision: expense.revision, expected_payable_revision: expense.payable_revision,
+      }).pipe(timeout(15000)));
+      if (this.workspaces.selected() === company) {
+        this.cancellingExpense.set(null);
+        this.message.set('Despesa cancelada.');
+        this.api.revision.update(value => value + 1);
+        await this.load(url);
+      }
+    } catch {
+      if (this.workspaces.selected() === company) this.error.set('Não foi possível confirmar o cancelamento. Atualize a lista e verifique pagamentos ou alterações recentes.');
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  async showHistory(expense: Expense): Promise<void> {
+    const company = this.workspaces.selected();
+    if (!company) return;
+    const generation = ++this.historyGeneration;
+    this.historyExpense.set(expense);
+    this.historyItems.set([]);
+    this.historyLoading.set(true);
+    this.historyError.set(false);
+    try {
+      const rows = await firstValueFrom(this.http.get<ExpenseHistory[]>(this.url(company) + '/' + expense.id + '/history').pipe(timeout(15000)));
+      if (generation === this.historyGeneration) this.historyItems.set(rows);
+    } catch {
+      if (generation === this.historyGeneration) this.historyError.set(true);
+    } finally {
+      if (generation === this.historyGeneration) this.historyLoading.set(false);
+    }
+  }
+
+  historyDate(value: string): string { return new Date(value).toLocaleString('pt-BR'); }
+  historyAction(action: string): string { return {CREATED:'Cadastro', UPDATED:'Alteração', CANCELLED:'Cancelamento'}[action] ?? action; }
+  historyFields(fields: string[]):string { return fields.map(this.historyField).join(', '); }
+  readonly historyField = (field: string): string => ({
+    description:'Descrição', category:'Categoria', supplier_id:'Fornecedor', supplier:'Nome do fornecedor',
+    document_type:'Tipo de comprovante', document_reference:'Referência', amount:'Valor',
+    competence:'Competência', issue_date:'Emissão', due_date:'Vencimento', payable_id:'Título vinculado', status:'Situação',
+  }[field] ?? field);
+
   editRule(rule: ExpenseRule): void {
+    this.editingExpense.set(null);
     this.editingRule.set(rule);
     this.error.set('');
     this.message.set('');
@@ -504,6 +666,7 @@ export class Expenses {
       await firstValueFrom(this.http.post(base + '/rules/' + rule.id + '/cancel', {}).pipe(timeout(15000)));
       if (this.workspaces.selected() === company) {
         this.message.set('Recorrência cancelada.');
+        this.api.revision.update(value => value + 1);
         await this.load(base);
       }
     } catch {
@@ -530,6 +693,33 @@ export class Expenses {
     const base = this.url(company);
     const {frequency, due_day, ...value} = this.form.getRawValue();
     const amount = value.amount.replace(',', '.');
+    const expense = this.editingExpense();
+    if (expense) {
+      this.saving.set(true);
+      this.error.set('');
+      try {
+        const {supplier_id, ...financial} = value;
+        await firstValueFrom(this.http.put(base + '/' + expense.id, {
+          ...financial, amount, competence: value.competence + '-01',
+          supplier_id: supplier_id === '__legacy__' ? null : supplier_id,
+          supplier: supplier_id === '__legacy__' ? expense.supplier : null,
+          due_date: value.due_date || null, document_type: value.document_type || null,
+          document_reference: value.document_reference.trim() || null,
+          expected_revision: expense.revision, expected_payable_revision: expense.payable_revision,
+        }).pipe(timeout(15000)));
+        if (this.workspaces.selected() === company) {
+          this.leaveEdit();
+          this.message.set('Despesa atualizada.');
+          this.api.revision.update(value => value + 1);
+          await this.load(base);
+        }
+      } catch {
+        if (this.workspaces.selected() === company) this.error.set('Não foi possível confirmar a alteração. Confira os campos e atualize a despesa para verificar pagamentos ou alterações recentes.');
+      } finally {
+        this.saving.set(false);
+      }
+      return;
+    }
     const editing = this.editingRule();
     if (editing) {
       this.saving.set(true);
@@ -542,6 +732,7 @@ export class Expenses {
         if (this.workspaces.selected() === company) {
           this.leaveRuleEdit();
           this.message.set('Recorrência atualizada.');
+          this.api.revision.update(value => value + 1);
           await this.load(base);
         }
       } catch {

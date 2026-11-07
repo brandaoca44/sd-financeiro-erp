@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.modules.identity.invitation_schemas import ConfirmPassword
 from app.modules.identity.models import MembershipStatus
-from app.modules.identity.permissions import FinancialPermissionKey
+from app.modules.identity.permissions import CompanyPermissionKey
 
 
 class CompanyReadGrantRequest(ConfirmPassword):
@@ -31,7 +31,7 @@ class CompanyReadGrantResponse(BaseModel):
 class CompanyFinancialGrantResponse(BaseModel):
     company_id: UUID
     user_id: UUID
-    permission_key: FinancialPermissionKey
+    permission_key: CompanyPermissionKey
     status: MembershipStatus
     revision: int
     company_revision: int

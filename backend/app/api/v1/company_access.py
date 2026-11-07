@@ -10,7 +10,7 @@ from app.api.v1.roles import guarded_access
 from app.modules.identity.access_security import AccessManagementDeniedError
 from app.modules.identity.company_access import CompanyGrantService
 from app.modules.identity.company_access_schemas import CompanyReadGrantRequest, CompanyReadGrantResponse, CompanyFinancialGrantRequest, CompanyFinancialGrantResponse
-from app.modules.identity.permissions import FinancialPermissionKey
+from app.modules.identity.permissions import CompanyPermissionKey
 from app.modules.identity.sessions import AuthenticatedSession
 
 router = APIRouter(tags=["Acesso por empresa"])
@@ -38,7 +38,7 @@ async def set_company_grant(organization_id: UUID, company_id: UUID, user_id: UU
 
 
 @router.get("/organizations/{organization_id}/companies/{company_id}/members/{user_id}/permissions/{permission_key}", response_model=CompanyFinancialGrantResponse | None)
-async def read_financial_grant(organization_id: UUID, company_id: UUID, user_id: UUID, permission_key: FinancialPermissionKey, request: Request,
+async def read_financial_grant(organization_id: UUID, company_id: UUID, user_id: UUID, permission_key: CompanyPermissionKey, request: Request,
     current: AuthenticatedSession = Depends(get_current_session), token: SecretStr = Depends(get_session_token)):
     try:
         async with request.app.state.session_factory() as reader:
@@ -50,7 +50,7 @@ async def read_financial_grant(organization_id: UUID, company_id: UUID, user_id:
 
 
 @router.put("/organizations/{organization_id}/companies/{company_id}/members/{user_id}/permissions/{permission_key}", response_model=CompanyFinancialGrantResponse)
-async def set_financial_grant(organization_id: UUID, company_id: UUID, user_id: UUID, permission_key: FinancialPermissionKey,
+async def set_financial_grant(organization_id: UUID, company_id: UUID, user_id: UUID, permission_key: CompanyPermissionKey,
     data: CompanyFinancialGrantRequest, request: Request,
     current: AuthenticatedSession = Depends(get_current_session), token: SecretStr = Depends(get_session_token)):
     async with guarded_access(request, current.user_id, service_class=CompanyGrantService) as service:

@@ -8,7 +8,8 @@ from sqlalchemy import case, or_, select
 
 from app.api.v1.auth import get_current_session, get_session_token, record_authorized_activity
 from app.modules.identity.company_authorization import CompanyAccessPolicy
-from app.modules.identity.permissions import FinancialPermissionKey
+from app.modules.identity.access_models import OrganizationOwnership
+from app.modules.identity.permissions import CompanyPermissionKey
 from app.modules.identity.sessions import AuthenticatedSession
 from app.modules.organizations.models import Company
 
@@ -19,7 +20,8 @@ class FinancialWorkspace(BaseModel):
     organization_id: UUID
     company_id: UUID
     company_name: str | None
-    permissions: list[FinancialPermissionKey]
+    permissions: list[CompanyPermissionKey]
+    can_manage_access: bool = False
 
 
 class WorkspacePage(BaseModel):
@@ -32,9 +34,12 @@ async def financial_workspaces(request: Request, cursor: UUID | None = None, lim
     current: AuthenticatedSession = Depends(get_current_session), token: SecretStr = Depends(get_session_token)):
     async with request.app.state.session_factory() as session:
         policy = CompanyAccessPolicy(session)
-        permissions = list(FinancialPermissionKey)
-        allowed = [policy.financial_visibility(current.user_id, Company.organization_id, key) for key in permissions]
-        query = select(Company.organization_id, Company.id.label("company_id"),
+        permissions = list(CompanyPermissionKey)
+        allowed = [policy.operation_visibility(current.user_id, Company.organization_id, key) for key in permissions]
+        owner = select(OrganizationOwnership.organization_id).where(
+            OrganizationOwnership.organization_id == Company.organization_id,
+            OrganizationOwnership.user_id == current.user_id).correlate(Company).exists()
+        query = select(owner.label("can_manage_access"), Company.organization_id, Company.id.label("company_id"),
             case((policy.visibility(current.user_id, Company.organization_id), Company.legal_name), else_=None).label("company_name"),
             *[condition.label(f"permission_{index}") for index, condition in enumerate(allowed)]
         ).where(or_(*allowed))
@@ -42,7 +47,7 @@ async def financial_workspaces(request: Request, cursor: UUID | None = None, lim
             query = query.where(Company.id > cursor)
         rows = (await session.execute(query.order_by(Company.id).limit(limit+1))).mappings().all()
         result = WorkspacePage(items=[FinancialWorkspace(organization_id=row["organization_id"], company_id=row["company_id"],
-            company_name=row["company_name"], permissions=[key for index,key in enumerate(permissions) if row[f"permission_{index}"]])
+            company_name=row["company_name"], can_manage_access=row["can_manage_access"], permissions=[key for index,key in enumerate(permissions) if row[f"permission_{index}"]])
             for row in rows[:limit]], next_cursor=rows[limit-1]["company_id"] if len(rows)>limit else None)
     await record_authorized_activity(request, token)
     return result

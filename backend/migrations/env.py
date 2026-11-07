@@ -3,6 +3,8 @@ import selectors
 
 from logging.config import fileConfig
 
+from app.modules.audit import models as audit_models
+from app.modules.finance import accounts as financial_accounts_models
 from app.modules.organizations import models as organization_models
 from app.modules.identity import models as identity_models
 from app.modules.identity import account_models
@@ -14,6 +16,7 @@ from app.modules.commercial import models as commercial_models
 from app.modules.finance import models as finance_models
 from app.modules.identity import profile as profile_models
 from app.modules.people import collaborators as collaborator_models
+from app.modules.finance import recurring as recurring_models
 from app.modules.finance import billing as billing_models
 from app.modules.finance import expenses as expense_models
 from alembic import context

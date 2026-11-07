@@ -50,7 +50,7 @@ class PayableService:
         policy = CompanyAccessPolicy(self.session)
         if not await policy.lock_financial_contract(organization_id, company_id):
             self.deny()
-        if not await policy.has_financial_permission(actor_id, organization_id, company_id, permission_key):
+        if not await policy.has_operation_permission(actor_id, organization_id, company_id, permission_key):
             self.deny()
         login = await self.session.scalar(select(UserSession).where(UserSession.token_hash == token_hash).with_for_update())
         now = datetime.now(timezone.utc)
@@ -98,40 +98,55 @@ class PayableService:
         return {"revision": title.revision, "status": title.status, "amount": str(title.amount),
                 "issue_date": title.issue_date.isoformat(), "due_date": title.due_date.isoformat()}
 
+    async def _change_authorized(self, organization_id, company_id, payable_id, data, actor, *, cancel):
+        title = await self.repository.get(organization_id, company_id, payable_id, lock=True)
+        if title is None:
+            self.deny()
+        if title.revision != data.expected_revision:
+            raise AccessRevisionConflictError()
+        if title.status != "OPEN":
+            raise PayableConflictError()
+        net = await self.session.scalar(select(func.coalesce(func.sum(case(
+            (PayableMovement.kind == "PAYMENT", PayableMovement.amount), else_=-PayableMovement.amount)), 0)).where(
+                PayableMovement.organization_id == organization_id, PayableMovement.company_id == company_id,
+                PayableMovement.payable_id == payable_id))
+        if not Decimal(0) <= net <= title.amount or (cancel and net != 0) or (not cancel and data.amount < net):
+            raise PayableConflictError()
+        before = self.snapshot(title)
+        if cancel:
+            title.status = "CANCELLED"
+            changed = ["status"]
+        else:
+            earlier = await self.session.scalar(select(PayableMovement.id).where(
+                PayableMovement.organization_id == organization_id, PayableMovement.company_id == company_id,
+                PayableMovement.payable_id == payable_id, PayableMovement.occurred_on < data.issue_date).limit(1))
+            if earlier is not None:
+                raise PayableConflictError()
+            changed = [field for field in ("description", "amount", "issue_date", "due_date") if getattr(title, field) != getattr(data, field)]
+            for field in ("description", "amount", "issue_date", "due_date"):
+                setattr(title, field, getattr(data, field))
+        title.revision += 1
+        self.session.add(PayableChange(organization_id=organization_id, company_id=company_id, payable_id=payable_id,
+            actor_user_id=actor, action="CANCELLED" if cancel else "UPDATED", before_state=before,
+            after_state={**self.snapshot(title), "changed_fields": changed}))
+        await self.session.flush()
+        return title
+
     async def _change(self, organization_id, company_id, payable_id, data, token, *, cancel):
         async with self.session.begin():
             actor = await self._authorize_write(organization_id, company_id, token)
-            title = await self.repository.get(organization_id, company_id, payable_id, lock=True)
-            if title is None:
-                self.deny()
-            if title.revision != data.expected_revision:
-                raise AccessRevisionConflictError()
-            if title.status != "OPEN":
-                raise PayableConflictError()
-            net = await self.session.scalar(select(func.coalesce(func.sum(case(
-                (PayableMovement.kind == "PAYMENT", PayableMovement.amount), else_=-PayableMovement.amount)), 0)).where(
-                    PayableMovement.organization_id == organization_id, PayableMovement.company_id == company_id,
-                    PayableMovement.payable_id == payable_id))
-            if not Decimal(0) <= net <= title.amount or (cancel and net != 0) or (not cancel and data.amount < net):
-                raise PayableConflictError()
-            before = self.snapshot(title)
-            if cancel:
-                title.status = "CANCELLED"
-                changed = ["status"]
-            else:
-                earlier = await self.session.scalar(select(PayableMovement.id).where(
-                    PayableMovement.organization_id == organization_id, PayableMovement.company_id == company_id,
-                    PayableMovement.payable_id == payable_id, PayableMovement.occurred_on < data.issue_date).limit(1))
-                if earlier is not None:
-                    raise PayableConflictError()
-                changed = [field for field in ("description", "amount", "issue_date", "due_date") if getattr(title, field) != getattr(data, field)]
-                for field in ("description", "amount", "issue_date", "due_date"):
-                    setattr(title, field, getattr(data, field))
-            title.revision += 1
-            self.session.add(PayableChange(organization_id=organization_id, company_id=company_id, payable_id=payable_id,
-                actor_user_id=actor, action="CANCELLED" if cancel else "UPDATED", before_state=before,
-                after_state={**self.snapshot(title), "changed_fields": changed}))
-            await self.session.flush()
+            title = await self._change_authorized(organization_id, company_id, payable_id, data, actor, cancel=cancel)
+            # Rotas antigas continuam sincronizando a despesa de origem na mesma transação.
+            from app.modules.finance.expenses import Expense, record_expense_change, expense_snapshot
+            expense = await self.session.scalar(select(Expense).where(
+                Expense.organization_id == organization_id, Expense.company_id == company_id,
+                Expense.payable_id == payable_id).with_for_update())
+            if expense is not None:
+                before = expense_snapshot(expense)
+                for field in ("description", "amount", "issue_date", "due_date", "status"):
+                    setattr(expense, field, getattr(title, field))
+                expense.revision += 1
+                record_expense_change(self.session, expense, actor, "CANCELLED" if cancel else "UPDATED", before)
             result = PayableReceipt.model_validate(title)
         return result
 

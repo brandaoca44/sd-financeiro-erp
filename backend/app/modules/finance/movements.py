@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import case, func, select, text
 
+from app.modules.finance.account_posting import posting_account
 from app.modules.finance.models import Payable, PayableChange, PayableMovement, PayableMovementRequest
 from app.modules.finance.schemas import MovementReceipt, MovementResponse, PayablePosition
 from app.modules.finance.service import PayableService, PayableConflictError
@@ -42,6 +43,8 @@ class PayableMovementService(PayableService):
                    "occurred_on":data.occurred_on.isoformat(), "operation":operation}
         if payment_id is None:
             payload["amount"] = format(data.amount, ".2f")
+            if data.financial_account_id is not None:
+                payload["financial_account_id"] = str(data.financial_account_id)
         else:
             payload.update(payment_id=str(payment_id), reason=data.reason)
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
@@ -77,9 +80,11 @@ class PayableMovementService(PayableService):
                 if reversed_already is not None or data.occurred_on < source.occurred_on or source.amount > net:
                     raise PayableConflictError()
                 amount, reason = source.amount, data.reason
+            account_id = data.financial_account_id if payment_id is None else source.financial_account_id
+            await posting_account(self.session, organization_id, company_id, actor, account_id, data.occurred_on, reversal=payment_id is not None)
             before = {"revision":title.revision, "paid_amount":format(net, ".2f")}
             movement = PayableMovement(organization_id=organization_id, company_id=company_id, payable_id=payable_id,
-                actor_user_id=actor, kind=operation, amount=amount, occurred_on=data.occurred_on,
+                financial_account_id=account_id, actor_user_id=actor, kind=operation, amount=amount, occurred_on=data.occurred_on,
                 reverses_id=payment_id, reversal_reason=reason)
             self.session.add(movement)
             title.revision += 1

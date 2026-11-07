@@ -21,6 +21,7 @@ interface Collaborator {
   selector: 'sdf-collaborators',
   imports: [ReactiveFormsModule, BankSelector],
   styles: `
+    [hidden] { display: none !important; }
     form { display: grid; gap: 1rem; max-inline-size: 66rem; }
     .profile-block {
       display: grid; gap: .85rem; padding: clamp(.85rem, 2vw, 1.25rem);
@@ -59,7 +60,7 @@ interface Collaborator {
     @if (available()) {
       @if (creating() || editing()) {
       <section class="panel detail-panel">
-        <h2>{{editing() ? 'Editar colaborador' : 'Novo colaborador'}}</h2>
+        <h2>{{editing() ? (workspaces.can('people.update') ? 'Editar colaborador' : 'Consultar colaborador') : 'Novo colaborador'}}</h2>
         <form [formGroup]="form" (ngSubmit)="save()">
           <section class="profile-block" aria-label="Identificação profissional">
             <h3>Identificação profissional</h3>
@@ -94,10 +95,10 @@ interface Collaborator {
             <label>Data de admissão<input type="date" formControlName="admission_date" [readOnly]="!!closedLink()"></label>
           </div>
           </section>
-          <details class="profile-block" open>
+          <details [hidden]="!workspaces.can('people.documents') && !workspaces.can('people.compensation') && !workspaces.can('people.bank')" class="profile-block" open>
             <summary>Dados pessoais, remuneração e pagamento</summary>
             <div formGroupName="details">
-              <section class="private-section">
+              <section [hidden]="!workspaces.can('people.documents')" class="private-section">
                 <h3>Documentos e contato</h3>
                 <div class="details-grid">
               @for (field of privateFields.slice(0, 7); track field.key) {
@@ -106,7 +107,7 @@ interface Collaborator {
               }
                 </div>
               </section>
-              <section class="private-section">
+              <section [hidden]="!workspaces.can('people.documents')" class="private-section">
                 <h3>Endereço residencial</h3>
                 <div class="address-grid">
                   <label>CEP<input formControlName="cep" maxlength="8" inputmode="numeric"
@@ -119,6 +120,7 @@ interface Collaborator {
                 <h3>Remuneração e dados bancários</h3>
                 <div class="details-grid">
               @for (field of privateFields.slice(7); track field.key) {
+                @if (canField(field.key)) {
                 @if (field.key === 'bank') {
                   <div class="bank-field"><label id="collaborator-bank-label">Banco (obrigatório)</label>
                     <sdf-bank-selector formControlName="bank" aria-labelledby="collaborator-bank-label" />
@@ -128,7 +130,8 @@ interface Collaborator {
                   (input)="filterDigits(field.key, $event)" autocomplete="off"></label>
                 }
               }
-              <label>Tipo de conta (obrigatório)<select formControlName="account_type" required>
+              }
+              <label [hidden]="!workspaces.can('people.bank')">Tipo de conta (obrigatório)<select formControlName="account_type" required>
                 <option value="">Selecione</option>
                 @for (type of ['CORRENTE', 'POUPANCA', 'SALARIO', 'PAGAMENTO']; track type) {
                   <option [value]="type">{{type}}</option>
@@ -136,7 +139,7 @@ interface Collaborator {
               </select></label>
                 </div>
               </section>
-              <section class="private-section">
+              <section [hidden]="!workspaces.can('people.bank')" class="private-section">
                 <h3>Chave Pix (opcional)</h3>
                 <div class="details-grid">
                   <label>Tipo de chave<select formControlName="pix_type">
@@ -151,7 +154,7 @@ interface Collaborator {
               </section>
             </div>
           </details>
-          @if (editing() && form.controls.employment_type.value === 'CLT') {
+          @if (editing() && workspaces.can('people.compensation') && form.controls.employment_type.value === 'CLT') {
             <div>
               <button class="secondary" type="button" (click)="previewPayroll()" [disabled]="saving()">Simular folha 2026</button>
               <p class="muted">Prévia de desenvolvimento com a remuneração salva, sem dependentes ou outras verbas.</p>
@@ -163,7 +166,7 @@ interface Collaborator {
           }
           <div class="form-actions">
           <button class="secondary" type="button" (click)="reset()" [disabled]="saving() || !!pending">Voltar à lista</button>
-          <button class="primary" type="submit" [disabled]="saving() || form.invalid">
+          <button [hidden]="!workspaces.can(editing() ? 'people.update' : 'people.create')" class="primary" type="submit" [disabled]="saving() || form.invalid">
             {{saving() ? 'Registrando…' : pending ? 'Tentar novamente' : editing() ? 'Salvar alterações' : 'Cadastrar colaborador'}}
           </button>
           </div>
@@ -192,7 +195,7 @@ interface Collaborator {
       <section class="panel detail-panel register-list" aria-labelledby="collaborator-list-title">
         <div class="panel-heading">
           <h2 id="collaborator-list-title">Colaboradores cadastrados</h2>
-          <button class="primary" type="button" (click)="reset(); creating.set(true)">Novo colaborador</button>
+          <button [hidden]="!canCreate()" class="primary" type="button" (click)="reset(); creating.set(true)">Novo colaborador</button>
         </div>
         @if (saved()) { <p class="notice" role="status">Dados do colaborador salvos.</p> }
         <nav class="history-tabs" aria-label="Situação dos colaboradores">
@@ -211,8 +214,8 @@ interface Collaborator {
                   <td>{{dateLabel(row.termination_date)}}</td><td>{{reasonLabel(row.termination_reason)}}</td>
                   <td>{{duration(row)}}</td>
                 }
-                <td><div class="row-actions"><button class="secondary small" type="button" (click)="edit(row)" [disabled]="saving() || !!pending">Editar</button>
-                  @if (!row.termination_date) {
+                <td><div class="row-actions"><button class="secondary small" type="button" (click)="edit(row)" [disabled]="saving() || !!pending">{{workspaces.can('people.update') ? 'Editar' : 'Consultar'}}</button>
+                  @if (!row.termination_date && workspaces.can('people.terminate')) {
                     <button class="secondary small termination-action" type="button" (click)="startTermination(row)" [disabled]="saving() || !!pending">Desligar</button>
                   }
                 </div></td>
@@ -227,7 +230,7 @@ interface Collaborator {
 })
 export class Collaborators {
   private readonly http = inject(HttpClient);
-  private readonly workspaces = inject(Workspaces);
+  readonly workspaces = inject(Workspaces);
   readonly jobGroups = [
     {area: 'Administração e gestão', jobs: ['Auxiliar administrativo', 'Assistente administrativo', 'Analista administrativo', 'Coordenador administrativo', 'Gerente de operações', 'Diretor executivo']},
     {area: 'Financeiro e contabilidade', jobs: ['Assistente financeiro', 'Analista financeiro', 'Analista fiscal', 'Contador', 'Controlador financeiro', 'Gerente financeiro']},
@@ -309,7 +312,8 @@ export class Collaborators {
         this.rows.set([]);
         this.error.set('');
         this.loading.set(!!company);
-        if (company) void this.load(this.url(company.organization_id, company.company_id), generation);
+        if (company && this.workspaces.can('people.read')) void this.load(this.url(company.organization_id, company.company_id), generation);
+        else { this.available.set(!!company && this.canCreate()); this.loading.set(false); }
       });
     });
   }
@@ -320,7 +324,7 @@ export class Collaborators {
 
   private async load(url: string, generation: number): Promise<void> {
     try {
-      const rows = await firstValueFrom(this.http.get<Collaborator[]>(url).pipe(timeout(15000)));
+      const rows = this.workspaces.can('people.read') ? await firstValueFrom(this.http.get<Collaborator[]>(url).pipe(timeout(15000))) : [];
       if (generation === this.generation) {
         this.rows.set(rows);
         this.available.set(true);
@@ -349,8 +353,23 @@ export class Collaborators {
     }
   }
 
+  canCreate(): boolean { return this.workspaces.can('people.create') && this.workspaces.can('people.documents') && this.workspaces.can('people.bank'); }
+
+  canField(key: string): boolean {
+    return this.workspaces.can(key === 'monthly_compensation' ? 'people.compensation'
+      : ['bank', 'branch', 'account', 'account_type', 'pix_type', 'pix_key'].includes(key) ? 'people.bank' : 'people.documents');
+  }
+
+  private configurePrivate(): void {
+    for (const [key, control] of Object.entries(this.form.controls.details.controls)) {
+      if (this.canField(key)) control.enable({emitEvent: false}); else control.disable({emitEvent: false});
+    }
+  }
+
   reset(): void {
     this.form.reset();
+    this.form.enable();
+    this.configurePrivate();
     this.creating.set(false);
     this.editing.set(null);
     this.closedLink.set(false);
@@ -375,6 +394,9 @@ export class Collaborators {
         admission_date: row.admission_date ?? '',
         details: Object.fromEntries(Object.entries(details).map(([key, value]) => [key, value ?? ''])),
       });
+      this.form.enable();
+      this.configurePrivate();
+      if (!this.workspaces.can('people.update')) this.form.disable();
       this.payroll.set(null);
       this.editing.set(row.id);
       this.closedLink.set(!!row.termination_date);
@@ -407,7 +429,7 @@ export class Collaborators {
 
   async terminate(row: Collaborator): Promise<void> {
     const company = this.workspaces.selected();
-    if (!company || this.saving() || this.terminationForm.invalid) return;
+    if (!this.workspaces.can('people.terminate') || !company || this.saving() || this.terminationForm.invalid) return;
     const generation = this.generation;
     const url = this.url(company.organization_id, company.company_id);
     this.saving.set(true);
@@ -453,7 +475,7 @@ export class Collaborators {
   async save(): Promise<void> {
     const company = this.workspaces.selected();
     const {name, job_title, employment_type, work_model, admission_date, details} = this.form.getRawValue();
-    if (this.form.invalid || !company || !this.available() || this.saving() || !name.trim() || !job_title.trim()) return;
+    if (!this.workspaces.can(this.editing() ? 'people.update' : 'people.create') || this.form.invalid || !company || !this.available() || this.saving() || !name.trim() || !job_title.trim()) return;
     const generation = this.generation;
     const url = this.url(company.organization_id, company.company_id);
     const key = this.pending ?? crypto.randomUUID();
@@ -466,7 +488,7 @@ export class Collaborators {
       const body = {
         name, job_title, employment_type: employment_type || null, work_model: work_model || null,
         admission_date: admission_date || null,
-        details: Object.fromEntries(Object.entries(details).map(([key, value]) => {
+        details: Object.fromEntries(Object.entries(details).filter(([key]) => this.canField(key)).map(([key, value]) => {
           const text = String(value ?? '').trim();
           return [key, (key === 'monthly_compensation' ? text.replace(',', '.') : text) || null];
         })),

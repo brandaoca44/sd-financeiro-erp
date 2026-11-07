@@ -14,7 +14,12 @@ const routes: Routes = [
   {path:'mfa',loadComponent:()=>import('./app/features/auth/mfa-login').then(m=>m.MfaLogin)},
   {path:'plans',loadComponent:()=>import('./app/features/subscription/subscription').then(m=>m.SubscriptionPage)},
   {path: 'finance', canActivate: [authGuard], loadComponent: () => import('./app/features/finance/shell').then(m => m.FinanceShell), children: [
+    {path: 'alerts', loadComponent: () => import('./app/features/finance/alerts').then(m => m.AlertsPage)},
+    {path: 'financial-accounts', loadComponent: () => import('./app/features/finance/financial-accounts').then(m => m.FinancialAccountsPage)},
+    {path: 'cashflow', loadComponent: () => import('./app/features/finance/cashflow').then(m => m.CashflowPage)},
     {path: 'overview', loadComponent: () => import('./app/features/finance/overview').then(m => m.Overview)},
+    {path: 'audit', loadComponent: () => import('./app/features/finance/audit').then(m => m.AuditPage)},
+    {path: 'access', loadComponent: () => import('./app/features/finance/company-access').then(m => m.CompanyAccess)},
     {path: 'collaborators', loadComponent: () => import('./app/features/finance/collaborators').then(m => m.Collaborators)},
     {path: 'billing', loadComponent: () => import('./app/features/finance/billing').then(m => m.Billing)},
     {path: 'expenses', loadComponent: () => import('./app/features/finance/expenses').then(m => m.Expenses)},

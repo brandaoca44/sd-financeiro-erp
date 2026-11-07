@@ -88,6 +88,12 @@ _definitions[Feature.PAYABLES] = FeatureDefinition(Feature.PAYABLES, available=T
     permissions=frozenset({"payables.read", "payables.manage", "payables.settle", "payables.reverse"}))
 _definitions[Feature.PAYABLES_SUMMARY] = FeatureDefinition(Feature.PAYABLES_SUMMARY, available=True,
     permissions=frozenset({"payables.read"}))
+_definitions[Feature.RECEIVABLES] = FeatureDefinition(Feature.RECEIVABLES, available=True,
+    permissions=frozenset({"billing.read", "billing.manage", "billing.receive", "billing.reverse"}))
+_definitions[Feature.STAFF_COSTS] = FeatureDefinition(Feature.STAFF_COSTS, available=True,
+    permissions=frozenset({"people.read", "people.create", "people.update", "people.terminate", "people.documents", "people.compensation", "people.bank"}))
+_definitions[Feature.CASHFLOW] = FeatureDefinition(Feature.CASHFLOW, available=True,
+    permissions=frozenset({"payables.read", "billing.read", "accounts.read", "accounts.manage", "accounts.bank"}))
 FEATURES = MappingProxyType(_definitions)
 # Remover referências mutáveis de construção. Nenhuma API altera este catálogo.
 del _definitions

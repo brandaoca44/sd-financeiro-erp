@@ -105,3 +105,15 @@ maiúsculas no novo cadastro ou edição. Símbolos e valores contendo somente l
 são rejeitados. O formato brasileiro contém duas letras e seis números, conforme
 a orientação da Polícia Federal.
 https://www.gov.br/pf/pt-br/assuntos/passaporte/ajuda/duvidas_/caderneta/caderneta-numero-onde-fica-e
+
+
+A geração mensal das regras e a revisão das cobranças variáveis estão descritas em
+[Despesas recorrentes](despesas-recorrentes.md).
+
+
+A correção dos lançamentos e as restrições para despesas pagas estão em
+[Edição e cancelamento de despesas](edicao-despesas.md).
+
+As concessões de Faturamento e Pessoas são independentes das de Contas a pagar. Consulte [Permissões operacionais por empresa](permissoes-operacionais.md) para as ações disponíveis e a proteção de documentos, remuneração e dados bancários.
+
+O [Fluxo de caixa consolidado](fluxo-caixa.md) está disponível no catálogo Empresarial e exige leitura das duas áreas financeiras na mesma empresa.

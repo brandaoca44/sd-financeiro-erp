@@ -81,7 +81,7 @@ class CommercialPolicyTests(unittest.TestCase):
 
     def test_higher_plan_does_not_enable_unimplemented_feature(self):
         for plan in Plan:
-            self.assertEqual(self.decide(contract=replace(self.contract,plan=plan),feature=Feature.RECEIVABLES).denial,Denial.FEATURE_UNAVAILABLE)
+            self.assertEqual(self.decide(contract=replace(self.contract,plan=plan),feature=Feature.PRODUCTS).denial,Denial.FEATURE_UNAVAILABLE)
 
     def test_unlicensed_feature_is_rejected(self):
         self.assertEqual(self.decide(feature=Feature.CONSOLIDATION).denial,Denial.FEATURE_NOT_INCLUDED)
@@ -140,6 +140,6 @@ class ProductCatalogHttpTests(unittest.IsolatedAsyncioTestCase):
         data=response.json()
         self.assertFalse(data['published']);self.assertFalse(data['checkout_available'])
         self.assertEqual([plan['key'] for plan in data['plans']],['ESSENTIAL','PROFESSIONAL','ENTERPRISE'])
-        self.assertEqual(set(data['available_features']),{'business.payables','business.payables.summary'})
+        self.assertEqual(set(data['available_features']),{'business.payables','business.payables.summary','business.receivables','business.staff_costs','business.cashflow'})
         for private in ('organization_id','company_id','user_id','token','password','price','cpf'):
             self.assertNotIn(private,response.text)

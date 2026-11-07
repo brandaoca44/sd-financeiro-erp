@@ -30,7 +30,7 @@ class WorkspaceHttpTests(CompanyGrantHttpFixture):
         self.assertEqual(item["company_id"],str(self.a.id))
         self.assertIsNone(item["company_name"])
         self.assertEqual(item["permissions"],["payables.read"])
-        self.assertEqual(set(item),{"organization_id","company_id","company_name","permissions"})
+        self.assertEqual(set(item),{"organization_id","company_id","company_name","permissions","can_manage_access"})
         self.assertEqual((await self._set()).status_code,200)
         self.assertEqual((await self.contexts()).json()["items"][0]["company_name"],self.a.legal_name)
 

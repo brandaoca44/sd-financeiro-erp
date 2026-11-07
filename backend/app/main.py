@@ -1,9 +1,16 @@
+from contextlib import suppress
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 import asyncio
 import secrets
 
+from app.modules.audit.router import router as audit_router
+from app.modules.finance.receivables_summary import router as receivables_summary_router
+from app.modules.finance.cashflow import router as cashflow_router
+from app.modules.finance.accounts import router as accounts_router
+from app.modules.finance.account_links import router as account_links_router
+from app.modules.finance.account_statement import router as account_statement_router
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import SecretStr
@@ -36,6 +43,8 @@ from app.modules.organizations.company_router import router as company_router
 from app.modules.finance.router import router as payable_router
 from app.modules.people.collaborators import router as collaborators_router
 from app.modules.identity.profile import router as profile_router
+from app.modules.finance.recurring import router as recurring_router, recurring_expense_worker
+from app.modules.finance.alerts import router as alerts_router
 from app.modules.finance.results import router as results_router
 from app.modules.finance.billing import router as billing_router, customers_router
 from app.modules.finance.expenses import router as expenses_router, supplier_router
@@ -52,6 +61,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         client = redis_client
+        recurrence_task = None
         try:
             if config.auth_rate_limit_key is not None:
                 if client is None:
@@ -101,8 +111,14 @@ def create_app(
                     identity_key=config.auth_identity_encryption_key,
                     idle_timeout=timedelta(seconds=config.auth_idle_timeout_seconds))
                 application.state.authentication.account_service = application.state.accounts
+            if config.recurring_expenses_enabled and config.app_environment != "test" and application.state.authentication is not None:
+                recurrence_task = asyncio.create_task(recurring_expense_worker(factory))
             yield
         finally:
+            if recurrence_task is not None:
+                recurrence_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await recurrence_task
             application.state.accounts = None
             application.state.authentication = None
             application.state.ownership_limiter = None
@@ -145,6 +161,12 @@ def create_app(
         # Mensagem fixa: não serializar input, ctx, corpo ou erros que reflitam valores.
         return JSONResponse({"detail": "Dados de entrada inválidos."}, status_code=422)
 
+    application.include_router(account_statement_router, prefix=config.api_v1_prefix)
+    application.include_router(account_links_router, prefix=config.api_v1_prefix)
+    application.include_router(accounts_router, prefix=config.api_v1_prefix)
+    application.include_router(cashflow_router, prefix=config.api_v1_prefix)
+    application.include_router(receivables_summary_router, prefix=config.api_v1_prefix)
+    application.include_router(audit_router, prefix=config.api_v1_prefix)
     application.include_router(health_router, prefix=config.api_v1_prefix)
     application.include_router(profile_router, prefix=config.api_v1_prefix)
     application.include_router(auth_router, prefix=config.api_v1_prefix)
@@ -162,6 +184,8 @@ def create_app(
     application.include_router(payable_router, prefix=config.api_v1_prefix)
     application.include_router(collaborators_router, prefix=config.api_v1_prefix)
     application.include_router(customers_router, prefix=config.api_v1_prefix)
+    application.include_router(recurring_router, prefix=config.api_v1_prefix)
+    application.include_router(alerts_router, prefix=config.api_v1_prefix)
     application.include_router(results_router, prefix=config.api_v1_prefix)
     application.include_router(billing_router, prefix=config.api_v1_prefix)
     application.include_router(expenses_router, prefix=config.api_v1_prefix)

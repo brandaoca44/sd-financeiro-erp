@@ -1,3 +1,4 @@
+import { ReceivablesSummaryPanel } from './receivables-summary';
 import { CompetenceResultPanel } from './competence-result';
 import { Component, DestroyRef, effect, inject, signal, untracked } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -6,9 +7,11 @@ import { FinanceApi, Summary, money, dateLabel, today } from '../../core/finance
 import { Workspaces } from '../../core/workspaces';
 import { errorMessage } from '../../core/session';
 
-@Component({selector:'sdf-overview',imports:[ReactiveFormsModule,RouterLink,CompetenceResultPanel],template:`
-<div class="page-heading"><div><span class="eyebrow">CLAREZA PARA A SUA GESTÃO</span><h1>Visão financeira</h1><p class="muted">Acompanhe suas obrigações e organize os próximos passos.</p></div><a class="primary" routerLink="/finance/payables">Ver contas a pagar <span aria-hidden="true">↗</span></a></div>
-@if(!workspaces.can('payables.read')){<div class="empty-state"><h2>Consulta financeira restrita</h2><p>Seu perfil não permite consultar os indicadores desta empresa. Peça ao Master para revisar seu acesso.</p></div>}@else{
+@Component({selector:'sdf-overview',imports:[ReactiveFormsModule,RouterLink,CompetenceResultPanel,ReceivablesSummaryPanel],template:`
+<div class="page-heading"><div><span class="eyebrow">ACOMPANHAMENTO FINANCEIRO</span><h1>Visão financeira</h1><p class="muted">Consulte pagamentos, recebimentos e vencimentos da empresa.</p></div>@if(workspaces.can('payables.read')){<a class="primary" routerLink="/finance/payables">Ver contas a pagar <span aria-hidden="true">↗</span></a>}</div>
+@if(workspaces.can('payables.read') && workspaces.can('billing.read')){<p><a class="secondary small" routerLink="/finance/cashflow">Consultar fluxo de caixa consolidado</a></p>}
+<sdf-receivables-summary />
+@if(!workspaces.can('payables.read') && !workspaces.can('billing.read')){<div class="empty-state"><h2>Consulta financeira restrita</h2><p>Seu perfil não permite consultar os indicadores desta empresa. Peça ao Master para revisar seu acesso.</p></div>}@else if(workspaces.can('payables.read')){
 <sdf-competence-result />
 <section class="filter-panel"><div><strong>Atividade do período</strong><small>Os saldos exibidos nos cartões são atuais.</small></div><form class="date-filter" [formGroup]="form" (ngSubmit)="load()"><label>De<input type="date" formControlName="start" required></label><span class="filter-divider">—</span><label>Até<input type="date" formControlName="end" required></label><button class="secondary" type="submit" [disabled]="busy() || form.invalid">{{busy()?'Atualizando…':'Atualizar'}}</button></form></section>
 @if(error()){<div class="alert" role="alert">{{error()}}</div>}

@@ -3,8 +3,8 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom, timeout } from 'rxjs';
 import { Session, errorMessage } from './session';
 
-export type Permission='payables.read'|'payables.manage'|'payables.settle'|'payables.reverse';
-export interface Workspace {organization_id:string; company_id:string; company_name:string|null; permissions:Permission[]}
+export type Permission='payables.read'|'payables.manage'|'payables.settle'|'payables.reverse'|'billing.read'|'billing.manage'|'billing.receive'|'billing.reverse'|'people.read'|'people.create'|'people.update'|'people.terminate'|'people.documents'|'people.compensation'|'people.bank'|'accounts.read'|'accounts.manage'|'accounts.bank';
+export interface Workspace {organization_id:string; company_id:string; company_name:string|null; permissions:Permission[]; can_manage_access?:boolean}
 @Injectable({providedIn:'root'})
 export class Workspaces {
   confirmChange:(()=>boolean)|null=null;

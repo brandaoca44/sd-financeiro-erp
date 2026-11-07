@@ -60,7 +60,7 @@ async def competence_result(organization_id: UUID, company_id: UUID, request: Re
         ).outerjoin(Payable, and_(
             Payable.organization_id == Expense.organization_id, Payable.company_id == Expense.company_id,
             Payable.id == Expense.payable_id,
-        )).where(Expense.organization_id == organization_id, Expense.company_id == company_id,
+        )).where(Expense.organization_id == organization_id, Expense.company_id == company_id, Expense.status == "OPEN",
                  or_(Expense.payable_id.is_(None), Payable.status == "OPEN")).cte("result_expenses")
 
         linked_expense = select(Expense.id).where(

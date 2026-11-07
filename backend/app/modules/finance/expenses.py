@@ -1,21 +1,24 @@
 """Registro de despesas e geração transacional da obrigação financeira."""
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
-from sqlalchemy import Boolean, Date, ForeignKeyConstraint, Numeric, String, UniqueConstraint, Uuid, and_, case, func, select
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKeyConstraint, Index, Integer, Numeric, String, UniqueConstraint, Uuid, and_, case, func, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased, mapped_column
 
 from app.api.v1.auth import get_current_session, get_session_token, record_authorized_activity
 from app.database.base import Base
 from app.modules.finance.recurrence_calendar import ContractDueDay
+from app.modules.finance.movements import PayableMovementService
 from app.modules.finance.models import Payable, PayableMovement, actor_member, scope_company
 from app.modules.finance.router import writer
-from app.modules.finance.schemas import CalendarDate, Money, PayableCreate
+from app.modules.finance.schemas import CalendarDate, Money, PayableCancel, PayableCreate, PayableUpdate
 from app.modules.finance.service import PayableConflictError, PayableService
+from app.modules.identity.access_security import AccessRevisionConflictError
 from app.modules.identity.company_authorization import CompanyAccessPolicy
 from app.modules.identity.permissions import PermissionKey
 from app.modules.organizations.models import Company
@@ -46,6 +49,9 @@ class SupplierOption(SupplierCreate):
 class Expense(Base):
     __tablename__ = "expenses"
     __table_args__ = (
+        CheckConstraint("competence IS NULL OR EXTRACT(DAY FROM competence) = 1", name="ck_expenses_competence"),
+        CheckConstraint("revision > 0", name="ck_expenses_revision"),
+        CheckConstraint("status IN ('OPEN', 'CANCELLED')", name="ck_expenses_status"),
         scope_company("fk_expenses_company"),
         actor_member("created_by_user_id", "fk_expenses_creator"),
         ForeignKeyConstraint(
@@ -65,6 +71,8 @@ class Expense(Base):
     id = mapped_column(Uuid, primary_key=True)
     created_by_user_id = mapped_column(Uuid, nullable=False)
     payable_id = mapped_column(Uuid, nullable=True)
+    revision = mapped_column(Integer, nullable=False, server_default="1")
+    status = mapped_column(String(12), nullable=False, server_default="OPEN")
     description = mapped_column(String(300), nullable=False)
     category = mapped_column(String(20), nullable=False)
     supplier_id = mapped_column(Uuid, nullable=True)
@@ -75,6 +83,38 @@ class Expense(Base):
     issue_date = mapped_column(Date, nullable=False)
     competence = mapped_column(Date, nullable=True)
     due_date = mapped_column(Date, nullable=True)
+
+
+class ExpenseChange(Base):
+    __tablename__ = "expense_changes"
+    __table_args__ = (
+        Index("ix_expense_changes_timeline", "organization_id", "company_id", "created_at", "id"),
+        ForeignKeyConstraint(["organization_id", "company_id", "expense_id"],
+                             ["expenses.organization_id", "expenses.company_id", "expenses.id"],
+                             name="fk_expense_changes_expense", ondelete="RESTRICT"),
+        actor_member("actor_user_id", "fk_expense_changes_actor"),
+    )
+    id = mapped_column(Uuid, primary_key=True, default=uuid4)
+    organization_id = mapped_column(Uuid, nullable=False)
+    company_id = mapped_column(Uuid, nullable=False)
+    expense_id = mapped_column(Uuid, nullable=False)
+    actor_user_id = mapped_column(Uuid, nullable=False)
+    action = mapped_column(String(12), nullable=False)
+    before_state = mapped_column(JSONB, nullable=False)
+    after_state = mapped_column(JSONB, nullable=False)
+    created_at = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+def expense_snapshot(expense):
+    fields = ("description", "category", "supplier_id", "supplier", "document_type", "document_reference",
+              "amount", "competence", "issue_date", "due_date", "payable_id", "revision", "status")
+    return {key: str(getattr(expense, key)) if getattr(expense, key) is not None else None for key in fields}
+
+
+def record_expense_change(session, expense, actor, action, before):
+    session.add(ExpenseChange(organization_id=expense.organization_id, company_id=expense.company_id,
+                expense_id=expense.id, actor_user_id=actor, action=action,
+                before_state=before, after_state=expense_snapshot(expense)))
 
 
 class ExpenseCreate(BaseModel):
@@ -111,6 +151,9 @@ class ExpenseRuleCreate(BaseModel):
 class ExpenseRule(Base):
     __tablename__ = "expense_rules"
     __table_args__ = (
+        CheckConstraint("due_day IN (5, 10, 15, 20, 25, 30)", name="ck_expense_rules_due_day"),
+        CheckConstraint("EXTRACT(DAY FROM next_month) = 1", name="ck_expense_rules_next_month"),
+        actor_member("authorized_by_user_id", "fk_expense_rules_authorizer"),
         ForeignKeyConstraint(
             ["organization_id", "company_id", "supplier_id"],
             ["finance_suppliers.organization_id", "finance_suppliers.company_id", "finance_suppliers.id"],
@@ -126,15 +169,31 @@ class ExpenseRule(Base):
     due_day = mapped_column(Numeric(2, 0), nullable=False)
     fixed_amount = mapped_column(Numeric, nullable=True)
     cancelled = mapped_column(Boolean, nullable=False, server_default="false")
+    authorized_by_user_id = mapped_column(Uuid, nullable=True)
+    next_month = mapped_column(Date, nullable=False)
+
+
+class ExpenseUpdate(ExpenseCreate):
+    expected_revision: int = Field(strict=True, ge=1)
+    expected_payable_revision: int | None = Field(default=None, strict=True, ge=1)
+
+
+class ExpenseCancel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(strict=True, ge=1)
+    expected_payable_revision: int | None = Field(default=None, strict=True, ge=1)
 
 
 class ExpenseReceipt(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     payable_id: UUID | None
+    revision: int
+    status: Literal["OPEN", "CANCELLED"]
 
 
 class ExpenseResponse(ExpenseCreate, ExpenseReceipt):
+    payable_revision: int | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -164,7 +223,50 @@ class ExpenseService(PayableService):
                               created_by_user_id=actor, payable_id=payable.id if payable else None, **values)
             self.session.add(expense)
             await self.session.flush()
+            record_expense_change(self.session, expense, actor, "CREATED", {})
         return expense
+
+    async def change(self, organization_id, company_id, expense_id, data, token, *, cancel):
+        async with self.session.begin():
+            actor = await self._authorize_write(organization_id, company_id, token)
+            expense = await self.session.get(Expense, (organization_id, company_id, expense_id), with_for_update=True)
+            if expense is None:
+                self.deny()
+            if expense.revision != data.expected_revision:
+                raise AccessRevisionConflictError()
+            if expense.status != "OPEN":
+                raise PayableConflictError()
+            before = expense_snapshot(expense)
+            if expense.payable_id:
+                if data.expected_payable_revision is None or (not cancel and data.due_date is None):
+                    raise PayableConflictError()
+                payload = (PayableCancel(expected_revision=data.expected_payable_revision) if cancel else
+                           PayableUpdate(expected_revision=data.expected_payable_revision,
+                               description=data.description, amount=data.amount, issue_date=data.issue_date,
+                               due_date=data.due_date))
+                await self._change_authorized(organization_id, company_id, expense.payable_id, payload, actor, cancel=cancel)
+            elif data.expected_payable_revision is not None:
+                raise PayableConflictError()
+            if cancel:
+                expense.status = "CANCELLED"
+            else:
+                values = data.model_dump(exclude={"expected_revision", "expected_payable_revision"})
+                if data.supplier_id:
+                    supplier = await self.session.get(Supplier, (organization_id, company_id, data.supplier_id))
+                    if supplier is None:
+                        self.deny()
+                    values["supplier"] = supplier.name
+                if not expense.payable_id and data.due_date:
+                    title = await self.repository.create(organization_id, company_id, actor,
+                        PayableCreate(description=data.description, amount=data.amount,
+                                      issue_date=data.issue_date, due_date=data.due_date))
+                    expense.payable_id = title.id
+                for field, value in values.items():
+                    setattr(expense, field, value)
+            expense.revision += 1
+            record_expense_change(self.session, expense, actor, "CANCELLED" if cancel else "UPDATED", before)
+            await self.session.flush()
+            return ExpenseReceipt.model_validate(expense)
 
 
 router = APIRouter(prefix="/organizations/{organization_id}/companies/{company_id}/expenses", tags=["Despesas"])
@@ -197,13 +299,21 @@ async def list_expenses(organization_id: UUID, company_id: UUID, request: Reques
             Company.id == company_id, Company.organization_id == organization_id,
             policy.financial_visibility(current.user_id, organization_id, PermissionKey.PAYABLES_READ),
         ).exists()
-        query = select(Expense).where(
+        query = select(Expense, Payable).outerjoin(Payable, and_(
+            Payable.organization_id == Expense.organization_id, Payable.company_id == Expense.company_id,
+            Payable.id == Expense.payable_id,
+        )).where(
             Expense.organization_id == organization_id, Expense.company_id == company_id, visible_company,
         )
         if expense_id is not None:
             query = query.where(Expense.id == expense_id)
-        rows = await session.scalars(query.order_by(Expense.issue_date.desc(), Expense.id.desc()).limit(100))
-        result = [ExpenseResponse.model_validate(row) for row in rows]
+        rows = (await session.execute(query.order_by(Expense.issue_date.desc(), Expense.id.desc()).limit(100))).all()
+        result = [
+            ExpenseResponse.model_validate(row).model_copy(update=(
+                {**{field: getattr(title, field) for field in ("description", "amount", "issue_date", "due_date")},
+                 "payable_revision": title.revision, "status": title.status} if title else {}
+            )) for row, title in rows
+        ]
     await record_authorized_activity(request, token)
     return result
 
@@ -259,14 +369,15 @@ async def create_expense_rule(organization_id: UUID, company_id: UUID, data: Exp
         raise HTTPException(422, "Gastos com pessoal pertencem ao módulo Pessoas.")
     async with writer(request, current.user_id, service_class=ExpenseService) as service:
         async with service.session.begin():
-            await service._authorize_write(organization_id, company_id, token)
+            actor = await service._authorize_write(organization_id, company_id, token)
             if await service.session.get(Supplier, (organization_id, company_id, data.supplier_id)) is None:
                 service.deny()
             previous = await service.session.get(ExpenseRule, (organization_id, company_id, request_id))
             values = data.model_dump()
             if previous is None:
                 service.session.add(ExpenseRule(organization_id=organization_id, company_id=company_id,
-                                                id=request_id, **values))
+                                                id=request_id, authorized_by_user_id=actor,
+                                                next_month=PayableMovementService._today().replace(day=1), **values))
             elif any(getattr(previous, key) != value for key, value in values.items()):
                 raise PayableConflictError()
     return {"id": request_id}
@@ -274,6 +385,8 @@ async def create_expense_rule(organization_id: UUID, company_id: UUID, data: Exp
 
 class ExpenseRuleResponse(ExpenseRuleCreate):
     cancelled: bool
+    next_month: date
+    automation_enabled: bool
     model_config = ConfigDict(from_attributes=True)
     id: UUID
 
@@ -295,6 +408,7 @@ async def list_expense_rules(organization_id: UUID, company_id: UUID, request: R
         result = [ExpenseRuleResponse(
             id=row.id, description=row.description, category=row.category, supplier_id=row.supplier_id,
             due_day=int(row.due_day), fixed_amount=row.fixed_amount, cancelled=row.cancelled,
+            next_month=row.next_month, automation_enabled=row.authorized_by_user_id is not None,
         ) for row in rows]
     await record_authorized_activity(request, token)
     return result
@@ -308,13 +422,16 @@ async def update_expense_rule(organization_id: UUID, company_id: UUID, rule_id: 
         raise HTTPException(422, "Gastos com pessoal pertencem ao módulo Pessoas.")
     async with writer(request, current.user_id, service_class=ExpenseService) as service:
         async with service.session.begin():
-            await service._authorize_write(organization_id, company_id, token)
+            actor = await service._authorize_write(organization_id, company_id, token)
             rule = await service.session.get(ExpenseRule, (organization_id, company_id, rule_id))
             supplier = await service.session.get(Supplier, (organization_id, company_id, data.supplier_id))
             if rule is None or supplier is None:
                 service.deny()
             if rule.cancelled:
                 raise PayableConflictError()
+            if rule.authorized_by_user_id is None:
+                rule.next_month = PayableMovementService._today().replace(day=1)
+            rule.authorized_by_user_id = actor
             for key, value in data.model_dump().items():
                 setattr(rule, key, value)
 
@@ -423,5 +540,58 @@ async def monthly_payments(organization_id: UUID, company_id: UUID, request: Req
             count=first["count"], paid=first["paid"], reversed=first["reversed"],
             net=first["paid"] - first["reversed"],
         )
+    await record_authorized_activity(request, token)
+    return result
+
+
+@router.put("/{expense_id}", response_model=ExpenseReceipt)
+async def update_expense(organization_id: UUID, company_id: UUID, expense_id: UUID, data: ExpenseUpdate,
+                          request: Request, current=Depends(get_current_session), token=Depends(get_session_token)):
+    if data.category == "PESSOAL":
+        raise HTTPException(422, "Gastos com pessoal pertencem ao módulo Pessoas.")
+    if (data.supplier_id is None) == (data.supplier is None):
+        raise HTTPException(422, "Informe um fornecedor.")
+    if data.due_date is not None and data.due_date < data.issue_date:
+        raise HTTPException(422, "Confira o vencimento.")
+    if data.document_reference and not data.document_type:
+        raise HTTPException(422, "Selecione o tipo de comprovante.")
+    async with writer(request, current.user_id, service_class=ExpenseService) as service:
+        return await service.change(organization_id, company_id, expense_id, data, token, cancel=False)
+
+
+@router.post("/{expense_id}/cancel", response_model=ExpenseReceipt)
+async def cancel_expense(organization_id: UUID, company_id: UUID, expense_id: UUID, data: ExpenseCancel,
+                          request: Request, current=Depends(get_current_session), token=Depends(get_session_token)):
+    async with writer(request, current.user_id, service_class=ExpenseService) as service:
+        return await service.change(organization_id, company_id, expense_id, data, token, cancel=True)
+
+
+class ExpenseHistoryItem(BaseModel):
+    id: UUID
+    created_at: datetime
+    action: str
+    changed_fields: list[str]
+
+
+@router.get("/{expense_id}/history", response_model=list[ExpenseHistoryItem])
+async def expense_history(organization_id: UUID, company_id: UUID, expense_id: UUID, request: Request,
+                           current=Depends(get_current_session), token=Depends(get_session_token)):
+    async with request.app.state.session_factory() as session:
+        policy = CompanyAccessPolicy(session)
+        visible = select(Company.id).where(
+            Company.organization_id == organization_id, Company.id == company_id,
+            policy.financial_visibility(current.user_id, organization_id, PermissionKey.PAYABLES_READ),
+        ).exists()
+        if not await session.scalar(select(Expense.id).where(
+            Expense.organization_id == organization_id, Expense.company_id == company_id,
+            Expense.id == expense_id, visible)):
+            raise HTTPException(404, "Despesa indisponível.")
+        rows = await session.scalars(select(ExpenseChange).where(
+            ExpenseChange.organization_id == organization_id, ExpenseChange.company_id == company_id,
+            ExpenseChange.expense_id == expense_id, visible,
+        ).order_by(ExpenseChange.created_at.desc(), ExpenseChange.id.desc()).limit(100))
+        result = [ExpenseHistoryItem(id=row.id, created_at=row.created_at, action=row.action,
+                  changed_fields=[key for key in row.after_state if key != "revision"
+                                  and row.before_state.get(key) != row.after_state.get(key)]) for row in rows]
     await record_authorized_activity(request, token)
     return result

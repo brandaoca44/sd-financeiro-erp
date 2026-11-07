@@ -2,8 +2,13 @@ import { Component, Injectable, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 export const helpGuides = [
+  {path: 'financial-accounts', title: 'Contas financeiras', text: 'Cadastre caixas e contas da empresa com saldo e data de referência. O saldo inicial fica preservado. A inativação mantém o histórico. Os dados bancários exigem acesso próprio. Use Vincular conta nos históricos antigos e consulte o saldo e o extrato nos detalhes da conta.'},
+  {path: 'cashflow', title: 'Fluxo de caixa', text: 'Consulte entradas e saídas registradas, pendências por vencimento e variações acumuladas do período. A consulta exige acesso às duas áreas. As projeções partem dos títulos cadastrados e não incluem um saldo bancário inicial.'},
+  {path: 'audit', title: 'Histórico de operações', text: 'O Master consulta operações da empresa por período, área e ação. O histórico identifica responsável, horário e registro, sem revelar valores pessoais ou dados bancários. Carregue mais para continuar a consulta.'},
+  {path: 'access', title: 'Permissões da empresa', text: 'O Master escolhe o usuário e concede ou revoga cada ação, confirmando sua senha. Documentos, remuneração e dados bancários têm acessos separados. Para cadastrar colaboradores, também são necessários os acessos aos dados pessoais e bancários obrigatórios.'},
+  {path: 'alerts', title: 'Central de alertas', text: 'Consulte contas vencidas, vencimentos de hoje e dos próximos sete dias. Cobranças variáveis aguardando revisão também aparecem aqui. Abra o alerta para acessar a cobrança.'},
   {path: 'account', title: 'Minha conta', text: 'Confira seus dados pessoais e bancários. Para salvar alterações, confirme sua senha atual. O CPF registrado identifica o titular e fica protegido contra alteração nesta tela.'},
-  {path: 'overview', title: 'Visão financeira', text: 'Os cartões mostram os saldos atuais. Use as datas para consultar baixas e estornos do período.'},
+  {path: 'overview', title: 'Visão financeira', text: 'Contas a receber mostra recebimentos do mês e saldos atuais das cobranças, conforme seu acesso. Em Contas a pagar, use as datas para consultar baixas e estornos do período.'},
   {path: 'expenses', title: 'Despesas', text: 'Cadastre a cobrança com categoria e fornecedor. Informe o vencimento para gerar o título. Consulte os lançamentos e as recorrências nas abas da tela.'},
   {path: 'payables', title: 'Contas a pagar', text: 'Abra os detalhes para consultar o saldo, registrar uma baixa ou verificar a origem. Use Pagamentos do mês para consultar baixas e estornos.'},
   {path: 'billing', title: 'Faturamento', text: 'Registre o serviço e sua competência. Com vencimento, a cobrança aparece em Contas a receber, onde você pode registrar o recebimento.'},

@@ -59,6 +59,7 @@ class PersonalProfileTests(CompanyGrantHttpFixture):
         self.assertEqual(reread.json()["cpf"], payload["cpf"])
 
     async def test_collaborator_pix_is_saved_only_in_private_details(self):
+        await self.enable_business_contracts()
         base = f"/api/v1/organizations/{self.org.id}/companies/{self.a.id}/collaborators"
         headers = {**self.headers[self.owner.id], "Idempotency-Key": str(uuid4())}
         details = dict(cpf="52998224725", phone="11912345678", bank="Banco de teste",

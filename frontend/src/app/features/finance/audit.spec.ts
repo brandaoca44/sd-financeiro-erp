@@ -1,0 +1,31 @@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { signal } from '@angular/core';
+import { afterEach, describe, expect, it } from 'vitest';
+import { AuditPage } from './audit';
+import { Workspaces } from '../../core/workspaces';
+const row={id:'id',source:'operation',domain:'BILLING',resource_type:'BILLING',resource_id:'resource',actor_user_id:'actor',actor_name:'Responsável',action:'CREATED',created_at:'2026-11-06T12:00:00Z'};
+function setup(master=true){const selected=signal({organization_id:'org',company_id:'a',can_manage_access:master});
+  TestBed.configureTestingModule({imports:[AuditPage],providers:[provideHttpClient(),provideHttpClientTesting(),{provide:Workspaces,useValue:{selected}}]});
+  const fixture=TestBed.createComponent(AuditPage),http=TestBed.inject(HttpTestingController);fixture.detectChanges();return {fixture,http,selected};}
+afterEach(()=>TestBed.resetTestingModule());
+describe('Histórico de operações',()=>{
+  it('não consulta a auditoria para usuário sem autoridade',()=>{const {fixture,http}=setup(false);
+    expect(fixture.nativeElement.textContent).toContain('disponível ao Master');http.expectNone(()=>true);fixture.destroy();});
+  it('descarta resposta da empresa anterior ao mudar contexto',async()=>{const {fixture,http,selected}=setup();
+    const old=http.expectOne(request=>request.url.endsWith('/companies/a/audit'));
+    selected.set({...selected(),company_id:'b'});fixture.detectChanges();
+    http.expectOne(request=>request.url.endsWith('/companies/b/audit')).flush({items:[],next_cursor:null});
+    old.flush({items:[row],next_cursor:'old-cursor'});await fixture.whenStable();
+    expect(fixture.componentInstance.items()).toEqual([]);expect(fixture.componentInstance.cursor()).toBeNull();http.verify();fixture.destroy();});
+  it('mantém os filtros aplicados durante a paginação e reinicia ao consultar novamente',async()=>{const {fixture,http}=setup();
+    http.expectOne(request=>request.url.endsWith('/audit')).flush({items:[row],next_cursor:'cursor-1'});await fixture.whenStable();
+    const component=fixture.componentInstance;component.form.controls.domain.setValue('PEOPLE');
+    const more=component.loadMore();const request=http.expectOne(request=>request.url.endsWith('/audit'));
+    expect(request.request.params.get('cursor')).toBe('cursor-1');expect(request.request.params.has('domain')).toBe(false);
+    request.flush({items:[{...row,id:'id2'}],next_cursor:null});await more;expect(component.items().length).toBe(2);
+    const refresh=component.refresh();const next=http.expectOne(request=>request.url.endsWith('/audit'));
+    expect(next.request.params.get('domain')).toBe('PEOPLE');expect(next.request.params.has('cursor')).toBe(false);
+    expect(component.items()).toEqual([]);next.flush({items:[],next_cursor:null});await refresh;http.verify();fixture.destroy();});
+});

@@ -13,13 +13,15 @@ from sqlalchemy.orm import mapped_column
 
 from app.api.v1.auth import get_current_session, get_session_token, record_authorized_activity
 from app.database.base import Base
+from app.modules.audit.models import record_event
 from app.modules.finance.schemas import Money
 from app.modules.people.payroll_preview import estimate_clt_2026
 from app.modules.identity.account_security import RegisterRequest
 from app.modules.identity.pix import PixDetails, normalize_passport
-from app.modules.identity.access_models import OrganizationOwnership
+from app.modules.identity.permissions import PermissionKey
+from app.modules.finance.router import writer
 from app.modules.identity.company_authorization import CompanyAccessPolicy
-from app.modules.organizations.models import Company, CompanyStatus, Organization
+from app.modules.organizations.models import Company
 
 
 class Collaborator(Base):
@@ -96,8 +98,28 @@ class RequiredPrivateDetails(PrivateDetails):
         return value
 
 
+class WritablePrivateDetails(RequiredPrivateDetails):
+    cpf: Annotated[str, StringConstraints(pattern=r"^[0-9]{11}$")] | None = None
+    phone: Annotated[str, StringConstraints(pattern=r"^[0-9]{10,11}$")] | None = None
+    bank: ShortText | None = None
+    branch: Annotated[str, StringConstraints(pattern=r"^[0-9]{1,80}$")] | None = None
+    account: Annotated[str, StringConstraints(pattern=r"^[0-9]{1,80}$")] | None = None
+    account_type: Literal["CORRENTE", "POUPANCA", "SALARIO", "PAGAMENTO"] | None = None
+
+    @field_validator("cpf")
+    @classmethod
+    def validate_cpf(cls, value):
+        if value is not None:
+            RegisterRequest.cpf_valid(SecretStr(value))
+        return value
+
+
 class CollaboratorCreate(CollaboratorSummary):
     details: RequiredPrivateDetails
+
+
+class CollaboratorUpdate(CollaboratorSummary):
+    details: WritablePrivateDetails | None = None
 
 
 class CollaboratorResponse(CollaboratorSummary):
@@ -140,15 +162,49 @@ router = APIRouter(
 )
 
 
-def visible_company(user_id, organization_id, company_id):
-    owner = select(OrganizationOwnership.user_id).where(
-        OrganizationOwnership.organization_id == organization_id, OrganizationOwnership.user_id == user_id,
-    ).exists()
-    return select(Company.id).where(
-        Company.organization_id == organization_id, Company.id == company_id,
-        Company.status == CompanyStatus.ACTIVE, owner,
-        CompanyAccessPolicy._active_actor(user_id, organization_id),
-    ).exists()
+PRIVATE_GROUPS = {
+    PermissionKey.PEOPLE_DOCUMENTS: frozenset({"cpf", "rg", "cnh", "passport", "birth_date", "birthplace", "cep", "address", "phone"}),
+    PermissionKey.PEOPLE_COMPENSATION: frozenset({"monthly_compensation"}),
+    PermissionKey.PEOPLE_BANK: frozenset({"bank", "branch", "account", "account_type", "pix_type", "pix_key"}),
+}
+REQUIRED_GROUP_FIELDS = {
+    PermissionKey.PEOPLE_DOCUMENTS: {"cpf", "phone"},
+    PermissionKey.PEOPLE_BANK: {"bank", "branch", "account", "account_type"},
+}
+
+
+def visible_company(user_id, organization_id, company_id, permission_key=PermissionKey.PEOPLE_READ):
+    return select(Company.id).where(Company.id == company_id,
+        CompanyAccessPolicy(None).operation_visibility(user_id, organization_id, permission_key)).exists()
+
+
+async def private_permissions(session, actor, organization_id, company_id):
+    return {permission: await CompanyAccessPolicy(session).has_operation_permission(
+        actor, organization_id, company_id, permission) for permission in PRIVATE_GROUPS}
+
+
+def assert_private_access(data, permissions):
+    supplied = set() if data is None else data.model_fields_set
+    if any(fields.intersection(supplied) and not permissions[permission]
+           for permission, fields in PRIVATE_GROUPS.items()):
+        raise HTTPException(404, "Operação de colaboradores não permitida.")
+
+
+async def save_private(session, row, data, request, actor, *, creating=False):
+    permissions = await private_permissions(session, actor, row.organization_id, row.company_id)
+    assert_private_access(data, permissions)
+    supplied = {} if data is None else data.model_dump(exclude_unset=True)
+    if not creating and not supplied:
+        return
+    merged = {} if creating else read_details(row, request).model_dump()
+    for permission, fields in PRIVATE_GROUPS.items():
+        if permissions[permission] and (creating or fields.intersection(supplied)):
+            required = REQUIRED_GROUP_FIELDS.get(permission, set())
+            values = merged | supplied
+            if any(not values.get(key) for key in required):
+                raise HTTPException(422, "Complete os dados pessoais ou bancários autorizados.")
+    if supplied:
+        store_details(row, PrivateDetails.model_validate(merged | supplied), request)
 
 
 @router.get("", response_model=list[CollaboratorResponse])
@@ -170,55 +226,65 @@ async def list_collaborators(organization_id: UUID, company_id: UUID, request: R
 async def create_collaborator(organization_id: UUID, company_id: UUID, data: CollaboratorCreate,
                               request: Request, request_id: UUID = Header(alias="Idempotency-Key"),
                               current=Depends(get_current_session), token=Depends(get_session_token)):
-    async with request.app.state.session_factory() as session, session.begin():
-        await session.scalar(select(Organization.id).where(Organization.id == organization_id).with_for_update())
-        if not await session.scalar(select(visible_company(current.user_id, organization_id, company_id))):
-            raise HTTPException(404, "Cadastro de colaboradores indisponível.")
-        await record_authorized_activity(request, token)
+    async with writer(request, current.user_id) as service, service.session.begin():
+        session = service.session
+        actor = await service._authorize_write(organization_id, company_id, token, permission_key=PermissionKey.PEOPLE_CREATE)
+        assert_private_access(data.details, await private_permissions(session, actor, organization_id, company_id))
         row = await session.get(Collaborator, (organization_id, company_id, request_id))
         if row is None:
             row = Collaborator(organization_id=organization_id, company_id=company_id,
                                id=request_id, **data.model_dump(exclude={"details"}))
-            store_details(row, data.details, request)
+            await save_private(session, row, data.details, request, actor, creating=True)
             session.add(row)
-        elif any(getattr(row, key) != value for key, value in data.model_dump(exclude={"details"}).items()) or read_details(row, request).model_dump() != data.details.model_dump():
-            raise HTTPException(409, "Cadastro já processado com outros dados.")
+            record_event(session, organization_id, company_id, actor, 'PEOPLE', 'COLLABORATOR', request_id, 'CREATED')
+        else:
+            saved = read_details(row, request).model_dump()
+            if (any(getattr(row, key) != value for key, value in data.model_dump(exclude={"details"}).items())
+                or any(saved.get(key) != value for key, value in data.details.model_dump(exclude_unset=True).items())):
+                raise HTTPException(409, "Cadastro já processado com outros dados.")
         return CollaboratorResponse.model_validate(row)
 
 
 @router.put("/{collaborator_id}", response_model=CollaboratorResponse)
 async def update_collaborator(organization_id: UUID, company_id: UUID, collaborator_id: UUID,
-                              data: CollaboratorCreate, request: Request,
+                              data: CollaboratorUpdate, request: Request,
                               current=Depends(get_current_session), token=Depends(get_session_token)):
-    async with request.app.state.session_factory() as session, session.begin():
-        await session.scalar(select(Organization.id).where(Organization.id == organization_id).with_for_update())
-        if not await session.scalar(select(visible_company(current.user_id, organization_id, company_id))):
-            raise HTTPException(404, "Cadastro de colaboradores indisponível.")
+    async with writer(request, current.user_id) as service, service.session.begin():
+        session = service.session
+        actor = await service._authorize_write(organization_id, company_id, token, permission_key=PermissionKey.PEOPLE_UPDATE)
         row = await session.get(Collaborator, (organization_id, company_id, collaborator_id))
         if row is None:
             raise HTTPException(404, "Cadastro de colaboradores indisponível.")
-        await record_authorized_activity(request, token)
         if row.termination_date and data.admission_date != row.admission_date:
             raise HTTPException(409, "A admissão de um vínculo encerrado faz parte do histórico.")
         for key, value in data.model_dump(exclude={"details"}).items():
             setattr(row, key, value)
-        store_details(row, data.details, request)
+        if data.details is not None:
+            await save_private(session, row, data.details, request, actor)
+        record_event(session, organization_id, company_id, actor, 'PEOPLE', 'COLLABORATOR', collaborator_id, 'UPDATED')
         return CollaboratorResponse.model_validate(row)
 
 
-@router.get("/{collaborator_id}/details", response_model=PrivateDetails)
+@router.get("/{collaborator_id}/details", response_model=PrivateDetails, response_model_exclude_unset=True)
 async def collaborator_details(organization_id: UUID, company_id: UUID, collaborator_id: UUID,
                                request: Request, response: Response,
                                current=Depends(get_current_session), token=Depends(get_session_token)):
     visible = visible_company(current.user_id, organization_id, company_id)
     async with request.app.state.session_factory() as session:
-        row = await session.scalar(select(Collaborator).where(
+        permissions = list(PRIVATE_GROUPS)
+        record = (await session.execute(select(Collaborator, *[
+            visible_company(current.user_id, organization_id, company_id, permission)
+            for permission in permissions]).where(
             Collaborator.organization_id == organization_id, Collaborator.company_id == company_id,
             Collaborator.id == collaborator_id, visible,
-        ))
-        if row is None:
+        ))).first()
+        if record is None:
             raise HTTPException(404, "Cadastro de colaboradores indisponível.")
-        details = read_details(row, request)
+        row, *allowed = record
+        allowed_fields = set().union(*(PRIVATE_GROUPS[permission] for permission, granted
+            in zip(permissions, allowed) if granted))
+        values = read_details(row, request).model_dump() if allowed_fields else {}
+        details = PrivateDetails(**{key: value for key, value in values.items() if key in allowed_fields})
     await record_authorized_activity(request, token)
     response.headers["Cache-Control"] = "no-store"
     return details
@@ -234,6 +300,7 @@ async def payroll_preview(organization_id: UUID, company_id: UUID, collaborator_
         row = await session.scalar(select(Collaborator).where(
             Collaborator.organization_id == organization_id, Collaborator.company_id == company_id,
             Collaborator.id == collaborator_id, visible_company(current.user_id, organization_id, company_id),
+            visible_company(current.user_id, organization_id, company_id, PermissionKey.PEOPLE_COMPENSATION),
         ))
         if row is None:
             raise HTTPException(404, "Cadastro de colaboradores indisponível.")
@@ -251,10 +318,9 @@ async def payroll_preview(organization_id: UUID, company_id: UUID, collaborator_
 async def terminate_collaborator(organization_id: UUID, company_id: UUID, collaborator_id: UUID,
                                   data: TerminationRequest, request: Request,
                                   current=Depends(get_current_session), token=Depends(get_session_token)):
-    async with request.app.state.session_factory() as session, session.begin():
-        await session.scalar(select(Organization.id).where(Organization.id == organization_id).with_for_update())
-        if not await session.scalar(select(visible_company(current.user_id, organization_id, company_id))):
-            raise HTTPException(404, "Cadastro de colaboradores indisponível.")
+    async with writer(request, current.user_id) as service, service.session.begin():
+        session = service.session
+        actor = await service._authorize_write(organization_id, company_id, token, permission_key=PermissionKey.PEOPLE_TERMINATE)
         row = await session.get(Collaborator, (organization_id, company_id, collaborator_id))
         if row is None:
             raise HTTPException(404, "Cadastro de colaboradores indisponível.")
@@ -262,7 +328,8 @@ async def terminate_collaborator(organization_id: UUID, company_id: UUID, collab
             raise HTTPException(409, "O vínculo já foi encerrado.")
         if row.admission_date and data.date < row.admission_date:
             raise HTTPException(422, "O desligamento deve ocorrer a partir da data de admissão.")
-        await record_authorized_activity(request, token)
+        if row.termination_date is None:
+            record_event(session, organization_id, company_id, actor, 'PEOPLE', 'COLLABORATOR', collaborator_id, 'TERMINATED')
         row.termination_date = data.date
         row.termination_reason = data.reason
         return CollaboratorResponse.model_validate(row)

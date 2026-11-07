@@ -5,7 +5,7 @@ import { Workspace } from './workspaces';
 
 export interface Title {id:string; description:string; amount:string; issue_date:string; due_date:string; status:'OPEN'|'CANCELLED'; revision:number}
 export interface ExpenseOrigin {id:string; category:string; supplier:string; document_type:string|null; document_reference:string|null}
-export interface Movement {id:string; payable_id:string; kind:'PAYMENT'|'REVERSAL'; amount:string; occurred_on:string; reverses_id:string|null; reversal_reason:string|null}
+export interface Movement {financial_account_id?:string|null;id:string; payable_id:string; kind:'PAYMENT'|'REVERSAL'; amount:string; occurred_on:string; reverses_id:string|null; reversal_reason:string|null}
 export interface Page<T>{items:T[];next_cursor:string|null}
 export interface Day {day:string;outstanding_due_amount:string;payments_amount:string;reversals_amount:string;net_paid_amount:string}
 export interface Summary {as_of:string;upcoming_days:number;current:{outstanding_amount:string;overdue_amount:string;due_today_amount:string;upcoming_amount:string;paid_amount:string;active_title_count:number};period:{payments_amount:string;reversals_amount:string;net_paid_amount:string};days:Day[]}

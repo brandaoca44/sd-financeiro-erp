@@ -87,6 +87,7 @@ class PayablePage(BaseModel):
 
 
 class PayablePayment(PayableCancel):
+    financial_account_id: UUID | None = None
     amount: Money
     occurred_on: CalendarDate
 
@@ -104,6 +105,7 @@ class MovementReceipt(BaseModel):
 
 
 class MovementResponse(BaseModel):
+    financial_account_id: UUID | None = None
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     payable_id: UUID

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         "production",
     ] = Field(default="development")
     app_debug: bool = Field(default=False)
+    recurring_expenses_enabled: bool = Field(default=True)
 
     api_v1_prefix: str = Field(default="/api/v1")
 

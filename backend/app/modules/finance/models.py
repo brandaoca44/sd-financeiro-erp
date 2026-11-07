@@ -55,6 +55,7 @@ class Payable(Base):
 class PayableMovement(Base):
     __tablename__ = "payable_movements"
     __table_args__ = (
+        ForeignKeyConstraint(["organization_id", "company_id", "financial_account_id"], ["financial_accounts.organization_id", "financial_accounts.company_id", "financial_accounts.id"], name="fk_payable_movement_account", ondelete="RESTRICT"),
         ForeignKeyConstraint(["organization_id", "company_id", "payable_id"], ["payables.organization_id", "payables.company_id", "payables.id"], ondelete="RESTRICT", name="fk_payable_movements_title"),
         actor_member("actor_user_id", "fk_payable_movements_actor"),
         UniqueConstraint("organization_id", "company_id", "payable_id", "id", name="uq_payable_movements_scope"),
@@ -71,6 +72,7 @@ class PayableMovement(Base):
     company_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     payable_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    financial_account_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(), nullable=False)
     occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
     reverses_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
@@ -82,6 +84,7 @@ class PayableMovement(Base):
 class PayableChange(Base):
     __tablename__ = "payable_changes"
     __table_args__ = (
+        Index("ix_payable_changes_timeline", "organization_id", "company_id", "created_at", "id"),
         ForeignKeyConstraint(["organization_id", "company_id", "payable_id"], ["payables.organization_id", "payables.company_id", "payables.id"], ondelete="RESTRICT", name="fk_payable_changes_title"),
         actor_member("actor_user_id", "fk_payable_changes_actor"),
         CheckConstraint("action IN ('CREATED', 'UPDATED', 'CANCELLED', 'PAYMENT', 'REVERSAL')", name="ck_payable_changes_action"),

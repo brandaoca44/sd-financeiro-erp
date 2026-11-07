@@ -16,9 +16,9 @@ class CompetenceResultTests(PayableHttpFixture):
             return response.json()
 
         billing = await post("/billing", dict(customer="Cliente", service="Consultoria",
-            competence="2026-11-01", issue_date="2026-12-01", due_date="2026-12-10", amount="1000.10"))
+            competence="2026-11-01", issue_date="2026-10-01", due_date="2026-11-10", amount="1000.10"))
         expense = await post("/expenses", dict(description="Internet", category="INTERNET", supplier="Fornecedor",
-            competence="2026-11-01", issue_date="2026-12-01", due_date="2026-12-10", amount="200.05"))
+            competence="2026-11-01", issue_date="2026-10-01", due_date="2026-11-10", amount="200.05"))
         await post("/expenses", dict(description="Legado", category="AGUA", supplier="Fornecedor",
             issue_date="2026-11-01", amount="10.00"))
         await post("/billing", dict(customer="Outro cliente", service="Serviço em dezembro",
@@ -39,7 +39,7 @@ class CompetenceResultTests(PayableHttpFixture):
         self.assertEqual(report["unassigned_expenses"], 1)
         self.assertEqual(report["unlinked_payables"], 1)
 
-        await post("/billing/" + billing["id"] + "/receipts", dict(amount="100.00", received_on="2026-12-02"))
+        await post("/billing/" + billing["id"] + "/receipts", dict(amount="100.00", received_on="2026-10-02"))
         self.assertEqual((await result())["result"], "800.05")
         cancelled = await self.cancel(expense["payable_id"])
         self.assertEqual(cancelled.status_code, 200, cancelled.text)

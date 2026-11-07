@@ -1,3 +1,6 @@
+import { AccountPicker } from '../../core/account-picker';
+import { LegacyAccountLink } from '../../core/legacy-account-link';
+import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -16,13 +19,14 @@ interface BillingRow {
 }
 
 interface Customer {id: string; name: string}
-interface Receipt {id: string; amount: string; received_on: string; reversed: boolean}
+interface Receipt {id: string; amount: string; received_on: string; reversed: boolean; financial_account_id?:string|null; reversed_on?:string|null}
 interface Position {received: string; outstanding: string; receipts: Receipt[]}
 
 @Component({
   selector: 'sdf-billing',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, AccountPicker, LegacyAccountLink],
   styles: `
+    [hidden] { display: none !important; }
     .billing-nav { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
     .billing-nav [aria-pressed="true"] { background: #e2edf9; color: #173762; }
     fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 1rem; }
@@ -39,9 +43,9 @@ interface Position {received: string; outstanding: string; receipts: Receipt[]}
     @if (loading()) { <p role="status">Consultando faturamento…</p> }
     @if (available()) {
       <nav class="billing-nav" aria-label="Seções de faturamento">
-        <button class="secondary" [disabled]="receiptBusy() || !!receiptKey" [attr.aria-pressed]="view() === 'register'" (click)="selected.set(null); view.set('register')">Novo faturamento</button>
-        <button class="secondary" [disabled]="receiptBusy() || !!receiptKey" [attr.aria-pressed]="view() === 'billing'" (click)="selected.set(null); view.set('billing')">Faturamento registrado</button>
-        <button class="secondary" [disabled]="receiptBusy() || !!receiptKey" [attr.aria-pressed]="view() === 'receivables'" (click)="selected.set(null); view.set('receivables')">Contas a receber</button>
+        <button [hidden]="!workspaces.can('billing.manage')" class="secondary" [disabled]="receiptBusy() || !!receiptKey" [attr.aria-pressed]="view() === 'register'" (click)="selected.set(null); view.set('register')">Novo faturamento</button>
+        <button class="secondary" [disabled]="receiptBusy() || !!receiptKey" [hidden]="!workspaces.can('billing.read')" [attr.aria-pressed]="view() === 'billing'" (click)="selected.set(null); view.set('billing')">Faturamento registrado</button>
+        <button class="secondary" [disabled]="receiptBusy() || !!receiptKey" [hidden]="!workspaces.can('billing.read')" [attr.aria-pressed]="view() === 'receivables'" (click)="selected.set(null); view.set('receivables')">Contas a receber</button>
         <button class="secondary" [disabled]="receiptBusy() || !!receiptKey || !!pending || customerSaving()"
           [attr.aria-pressed]="view() === 'customers'" (click)="selected.set(null); view.set('customers')">Clientes</button>
       </nav>
@@ -57,12 +61,12 @@ interface Position {received: string; outstanding: string; receipts: Receipt[]}
               <div><span>Recebido</span><strong>{{money(balance.received)}}</strong></div>
               <div><span>Saldo em aberto</span><strong>{{money(balance.outstanding)}}</strong></div>
             </div>
-            @if (+balance.outstanding > 0 || receiptKey) {
+            @if (workspaces.can('billing.receive') && (+balance.outstanding > 0 || receiptKey)) {
               <h3>Registrar recebimento</h3>
               <form [formGroup]="receiptForm" (ngSubmit)="receive(row)">
                 <fieldset [disabled]="receiptBusy() || !!receiptKey">
                   <label>Valor recebido (R$)<input formControlName="amount" inputmode="decimal" maxlength="19"></label>
-                  <label>Data do recebimento<input type="date" formControlName="received_on"></label>
+                  <sdf-account-picker formControlName="financial_account_id" /><label>Data do recebimento<input type="date" formControlName="received_on"></label>
                 </fieldset>
                 <div class="billing-actions"><button class="primary" type="submit" [disabled]="receiptBusy() || receiptForm.invalid">
                   {{receiptKey ? 'Tentar novamente' : 'Confirmar recebimento'}}
@@ -76,17 +80,17 @@ interface Position {received: string; outstanding: string; receipts: Receipt[]}
                 <tbody>@for (receipt of balance.receipts; track receipt.id) {
                   <tr><td>{{dateLabel(receipt.received_on)}}</td><td>{{money(receipt.amount)}}</td>
                     <td><span class="badge" [class.cancelled]="receipt.reversed">{{receipt.reversed ? 'Estornado' : 'Recebido'}}</span></td>
-                    <td>@if (!receipt.reversed) {
+                    <td>@if (!receipt.reversed && workspaces.can('billing.reverse')) {
                       <button class="secondary small danger-text" type="button" (click)="reverse(row, receipt)"
                         [disabled]="receiptBusy() || !!receiptKey">Estornar</button>
-                    }</td></tr>
+                    }<small>{{receipt.financial_account_id?'Conta vinculada':'Sem vínculo com conta'}}</small>@if(!receipt.financial_account_id){<sdf-legacy-account-link kind="receipt" [path]="receiptPath(row.id,receipt.id)" [reversed]="receipt.reversed" [reversalDate]="receipt.reversed_on??null" (saved)="openReceipt(row)" />}</td></tr>
                 }</tbody>
               </table></div>
             }
           } @else if (receiptBusy()) { <p role="status">Consultando cobrança…</p> }
         </section>
       } @else if (view() === 'customers') {
-        <section class="panel detail-panel">
+        <section [hidden]="!workspaces.can('billing.manage')" class="panel detail-panel">
           <h2>Cadastrar cliente</h2>
           <form [formGroup]="customerForm" (ngSubmit)="saveCustomer()">
             <fieldset [disabled]="customerSaving() || !!customerPending">
@@ -107,7 +111,7 @@ interface Position {received: string; outstanding: string; receipts: Receipt[]}
             </table></div>
           }
         </section>
-      } @else if (view() === 'register') {
+      } @else if (view() === 'register' && workspaces.can('billing.manage')) {
         <section class="panel detail-panel"><h2>Novo faturamento</h2>
           <form [formGroup]="form" (ngSubmit)="save()">
             <fieldset [disabled]="saving() || !!pending">
@@ -154,8 +158,9 @@ interface Position {received: string; outstanding: string; receipts: Receipt[]}
   `,
 })
 export class Billing {
+  private readonly route=inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
-  private readonly workspaces = inject(Workspaces);
+  readonly workspaces = inject(Workspaces);
   private readonly api = inject(FinanceApi);
   readonly dateLabel = dateLabel;
   readonly money = money;
@@ -185,7 +190,7 @@ export class Billing {
   receiptKey: string | null = null;
   readonly receiptForm = inject(FormBuilder).nonNullable.group({
     amount: ['', [Validators.required, Validators.pattern(/^(?:0|[1-9]\d*)(?:[.,]\d{1,2})?$/)]],
-    received_on: [today(), Validators.required],
+    received_on: [today(), Validators.required],financial_account_id:[''],
   });
 
   readonly form = inject(FormBuilder).nonNullable.group({
@@ -210,7 +215,9 @@ export class Billing {
       this.billings.set([]);
       this.receivables.set([]);
       if (!this.pending) this.resetForm();
-      if (url) void this.load(url, generation);
+      if (this.route.snapshot.queryParamMap.get('view') === 'receivables' && this.workspaces.can('billing.read')) this.view.set('receivables');
+      if (!this.workspaces.can('billing.read')) this.view.set(this.workspaces.can('billing.manage') ? 'register' : 'customers');
+      if (url && (this.workspaces.can('billing.read') || this.workspaces.can('billing.manage'))) void this.load(url, generation);
     });
   }
 
@@ -222,8 +229,8 @@ export class Billing {
     this.loading.set(true);
     try {
       const [billings, receivables, customers] = await Promise.all([
-        firstValueFrom(this.http.get<BillingRow[]>(url).pipe(timeout(15000))),
-        firstValueFrom(this.http.get<BillingRow[]>(url, {params: {receivables: 'true'}}).pipe(timeout(15000))),
+        this.workspaces.can('billing.read') ? firstValueFrom(this.http.get<BillingRow[]>(url).pipe(timeout(15000))) : Promise.resolve([]),
+        this.workspaces.can('billing.read') ? firstValueFrom(this.http.get<BillingRow[]>(url, {params: {receivables: 'true'}}).pipe(timeout(15000))) : Promise.resolve([]),
         firstValueFrom(this.http.get<Customer[]>(url.replace(/billing$/, 'customers')).pipe(timeout(15000))),
       ]);
       if (generation === this.generation) {
@@ -239,6 +246,7 @@ export class Billing {
     }
   }
 
+  receiptPath(billing:string,receipt:string){return this.url()+'/'+billing+'/receipts/'+receipt;}
   async openReceipt(row: BillingRow): Promise<void> {
     const url = this.url();
     if (!url || this.receiptBusy()) return;
@@ -250,12 +258,12 @@ export class Billing {
 
   async receive(row: BillingRow): Promise<void> {
     const url = this.url();
-    if (!url || this.receiptBusy() || this.receiptForm.invalid) return;
-    const {amount, received_on} = this.receiptForm.getRawValue();
+    if (!this.workspaces.can('billing.receive') || !url || this.receiptBusy() || this.receiptForm.invalid) return;
+    const {amount, received_on, financial_account_id} = this.receiptForm.getRawValue();
     const key = this.receiptKey ?? crypto.randomUUID();
     this.receiptKey = key;
     await this.receiptOperation(row, url, async path => {
-      await firstValueFrom(this.http.post(path + '/receipts', {amount: amount.replace(',', '.'), received_on},
+      await firstValueFrom(this.http.post(path + '/receipts', {amount: amount.replace(',', '.'), received_on,...(financial_account_id?{financial_account_id}:{})},
         {headers: {'Idempotency-Key': key}}).pipe(timeout(15000)));
       this.receiptKey = null;
       this.receiptForm.reset({received_on: today()});
@@ -264,7 +272,7 @@ export class Billing {
 
   async reverse(row: BillingRow, receipt: Receipt): Promise<void> {
     const url = this.url();
-    if (!url || this.receiptBusy() || !confirm('Estornar este recebimento? O valor voltará ao saldo em aberto.')) return;
+    if (!this.workspaces.can('billing.reverse') || !url || this.receiptBusy() || !confirm('Estornar este recebimento? O valor voltará ao saldo em aberto.')) return;
     await this.receiptOperation(row, url, async path => {
       await firstValueFrom(this.http.post(path + '/receipts/' + receipt.id + '/reverse', {}).pipe(timeout(15000)));
     });
@@ -276,7 +284,7 @@ export class Billing {
     this.error.set('');
     this.message.set('');
     try {
-      if (write) await write(path);
+      if (write) { await write(path); this.api.revision.update(value => value + 1); }
       if (generation !== this.generation) return;
       const balance = await firstValueFrom(this.http.get<Position>(path + '/position').pipe(timeout(15000)));
       if (generation === this.generation) {
@@ -299,7 +307,7 @@ export class Billing {
   async saveCustomer(): Promise<void> {
     const base = this.url(), generation = this.generation;
     const name = this.customerForm.getRawValue().name.trim();
-    if (!base || !name || !this.available() || this.customerSaving()) return;
+    if (!this.workspaces.can('billing.manage') || !base || !name || !this.available() || this.customerSaving()) return;
     const url = base.replace(/billing$/, 'customers');
     const attempt = this.customerPending ?? {url, key: crypto.randomUUID(), name};
     if (attempt.url !== url) {
@@ -332,7 +340,7 @@ export class Billing {
 
   async save(): Promise<void> {
     const url = this.url(), generation = this.generation;
-    if (!url || !this.available() || this.saving() || (!this.pending && this.form.invalid)) return;
+    if (!this.workspaces.can('billing.manage') || !url || !this.available() || this.saving() || (!this.pending && this.form.invalid)) return;
     if (this.pending && this.pending.url !== url) {
       this.error.set('Volte à empresa original para confirmar o lançamento pendente.');
       return;
@@ -351,9 +359,10 @@ export class Billing {
         headers: {'Idempotency-Key': attempt.key},
       }).pipe(timeout(15000)));
       this.pending = null;
+      this.api.revision.update(value => value + 1);
       this.resetForm();
       if (generation === this.generation) {
-        this.view.set(row.due_date ? 'receivables' : 'billing');
+        this.view.set(this.workspaces.can('billing.read') ? (row.due_date ? 'receivables' : 'billing') : 'register');
         this.message.set('Faturamento registrado.');
         await this.load(url, generation);
       }
